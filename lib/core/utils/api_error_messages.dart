@@ -19,6 +19,18 @@ String apiErrorMessage(Object error) {
       return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     case 'NETWORK_ERROR':
       return error.message; // đã là tiếng Việt từ ApiClient
+
+    // ── Categories (Wave 2) ────────────────────────────────────────────────
+    case 'CATEGORY_DUPLICATE_NAME':
+      return 'Tên danh mục này đã tồn tại. Vui lòng chọn tên khác.';
+    case 'CATEGORY_DEFAULT_IMMUTABLE':
+      return 'Danh mục mặc định không thể sửa hoặc xóa.';
+    case 'CATEGORY_HAS_ITEMS':
+      return 'Danh mục vẫn còn vật phẩm. Hãy chuyển chúng sang danh mục khác trước khi xóa.';
+    case 'CATEGORY_INVALID_PARENT':
+      return 'Danh mục cha không hợp lệ. Chỉ được dùng danh mục custom của bạn.';
+    case 'CATEGORY_NOT_FOUND':
+      return 'Không tìm thấy danh mục.';
   }
 
   switch (error.statusCode) {

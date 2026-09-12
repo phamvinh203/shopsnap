@@ -19,6 +19,17 @@ class CategoryDao {
     await db.insert('categories', cat.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Upsert hàng loạt khi sync từ API (Wave 2) — 1 transaction cho nhanh.
+  /// Row trùng id bị đè (server category trùng slug default seed local).
+  Future<void> upsertAll(List<CategoryModel> cats) async {
+    if (cats.isEmpty) return;
+    final batch = db.batch();
+    for (final c in cats) {
+      batch.insert('categories', c.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> update(CategoryModel cat) async {
     await db.update('categories', cat.toMap(), where: 'id = ?', whereArgs: [cat.id]);
   }

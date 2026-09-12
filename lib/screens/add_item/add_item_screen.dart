@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../database/daos/item_dao.dart';
+import '../../models/category_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/items_provider.dart';
 import '../../providers/categories_provider.dart';
 import '../../providers/database_provider.dart';
@@ -29,12 +34,18 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   String  _selectedCategory = 'cat_other';
   bool    _isSaving         = false;
 
+  // ── Wave 2: gợi ý category từ server (/categories/suggest) ─────────────────
+  Timer?  _suggestDebounce;     // debounce 500ms trước khi gọi API
+  String? _suggestedCategoryId; // id được server gợi ý (hiện badge "Gợi ý")
+  bool    _manualCategory = false; // user đã tự chọn → không auto-đổi nữa
+
   // Price comparison hints
   int? _lastPrice;
   int? _avgPrice;
 
   @override
   void dispose() {
+    _suggestDebounce?.cancel();
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     _noteCtrl.dispose();
@@ -42,19 +53,79 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   }
 
   Future<void> _onNameChanged(String value) async {
-    // Auto-classify category
-    final suggested = CategoryClassifier.classify(value);
-    if (suggested != 'cat_other') {
+    final name = value.trim();
+
+    // Auto-classify local — phản hồi tức thì, dùng được cả offline.
+    // User đã tự chọn category thì không tự ghi đè lựa chọn của họ.
+    final suggested = CategoryClassifier.classify(name);
+    if (suggested != 'cat_other' && !_manualCategory) {
       setState(() => _selectedCategory = suggested);
     }
     // Fetch price hint
-    if (value.trim().length >= 3) {
+    if (name.length >= 3) {
       final db   = await ref.read(databaseProvider.future);
-      final hint = await ItemDao(db).getPriceHint(value, null);
+      final hint = await ItemDao(db).getPriceHint(name, null);
       setState(() { _lastPrice = hint.lastPrice; _avgPrice = hint.avgPrice; });
     } else {
       setState(() { _lastPrice = null; _avgPrice = null; });
     }
+
+    // Gợi ý từ server — debounce ~500ms, chỉ chạy khi chưa tự chọn category
+    _suggestDebounce?.cancel();
+    if (name.length < 2) {
+      if (mounted && _suggestedCategoryId != null) {
+        setState(() => _suggestedCategoryId = null);
+      }
+      return;
+    }
+    _suggestDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _fetchServerSuggestion(name),
+    );
+  }
+
+  /// GET /categories/suggest — pre-select category gợi ý + hiện badge "Gợi ý".
+  /// Lỗi (mạng/401...) → bỏ qua lặng lẽ, classifier local ở trên vẫn còn tác dụng.
+  Future<void> _fetchServerSuggestion(String name) async {
+    // Endpoint cần JWT — chưa đăng nhập thì classifier local đã đủ
+    final authenticated = ref.read(authStateProvider).value?.isAuthenticated == true;
+    if (!authenticated) return;
+
+    try {
+      final sugg = await ref.read(categoryApiServiceProvider).suggestCategory(name);
+      if (!mounted || _manualCategory) return;
+
+      final categoryId = sugg.isMeaningful ? sugg.suggestedCategoryId : null;
+      setState(() => _suggestedCategoryId = categoryId);
+      // Auto chọn category gợi ý nếu user chưa tự chọn
+      if (categoryId != null && categoryId != _selectedCategory) {
+        setState(() => _selectedCategory = categoryId);
+      }
+    } catch (_) {
+      // im lặng — offline vẫn chạy với classifier local
+    }
+  }
+
+  /// User chủ động chọn category → khoá auto-suggest cho đến khi rời màn.
+  void _onCategoryPicked(String id) {
+    _suggestDebounce?.cancel();
+    setState(() {
+      _selectedCategory    = id;
+      _manualCategory      = true;
+      _suggestedCategoryId = null; // tắt badge "Gợi ý"
+    });
+  }
+
+  /// Sheet tạo nhanh category custom (POST /categories khi online, local khi offline).
+  /// Thành công → tự chọn luôn category vừa tạo.
+  Future<void> _showAddCategorySheet() async {
+    final created = await showModalBottomSheet<CategoryModel>(
+      context:            context,
+      isScrollControlled: true,
+      backgroundColor:    Colors.transparent,
+      builder: (_) => const _AddCategorySheet(),
+    );
+    if (created != null && mounted) _onCategoryPicked(created.id);
   }
 
   Future<void> _save() async {
@@ -130,7 +201,12 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
                   if (result != null && mounted) {
                     setState(() {
                       if (result['name'] != null) _nameCtrl.text = result['name'] as String;
-                      if (result['category_id'] != null) _selectedCategory = result['category_id'] as String;
+                      if (result['category_id'] != null) {
+                        _selectedCategory = result['category_id'] as String;
+                        // Category từ dữ liệu barcode coi như đã chọn — không auto-đổi
+                        _manualCategory = true;
+                        _suggestedCategoryId = null;
+                      }
                     });
                     _onNameChanged(_nameCtrl.text);
                   }
@@ -217,9 +293,11 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             const SizedBox(height: 8),
             catsAsync.when(
               data: (cats) => CategorySelector(
-                categories: cats,
-                selected:   _selectedCategory,
-                onChanged:  (id) => setState(() => _selectedCategory = id),
+                categories:    cats,
+                selected:      _selectedCategory,
+                suggestedId:   _manualCategory ? null : _suggestedCategoryId,
+                onAddCategory: _showAddCategorySheet,
+                onChanged:     _onCategoryPicked,
               ),
               loading: () => const SizedBox(height: 48, child: Center(child: CircularProgressIndicator())),
               error:   (_, __) => const SizedBox.shrink(),
@@ -294,6 +372,164 @@ class _QuickBtn extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
       ]),
+    ),
+  );
+}
+
+// ── Sheet tạo nhanh category custom (Wave 2) ────────────────────────────────
+
+class _AddCategorySheet extends ConsumerStatefulWidget {
+  const _AddCategorySheet();
+  @override
+  ConsumerState<_AddCategorySheet> createState() => _AddCategorySheetState();
+}
+
+class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
+  final _nameCtrl = TextEditingController();
+
+  String  _icon   = _iconChoices.first;
+  String  _color  = _colorChoices.first;
+  bool    _saving = false;
+  String? _error;
+
+  static const _iconChoices = [
+    '🛒', '🐾', '📚', '💐', '🎮', '☕', '🍰', '🚗', '🏠', '💊', '🎁', '⚽',
+  ];
+  static const _colorChoices = [
+    '#8BC34A', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+    '#FFEAA7', '#DDA0DD', '#FFA726',
+  ];
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Color _hexToColor(String hex) =>
+      Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Vui lòng nhập tên danh mục');
+      return;
+    }
+    setState(() { _saving = true; _error = null; });
+    try {
+      final cat = await ref.read(categoriesProvider.notifier)
+          .createCategory(name: name, color: _color, icon: _icon);
+      if (mounted) Navigator.pop(context, cat);
+    } catch (e) {
+      // 409 trùng tên v.v. → message tiếng Việt từ api_error_messages
+      if (mounted) setState(() { _saving = false; _error = apiErrorMessage(e); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      decoration: const BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(child: Container(
+            width: 40, height: 4,
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2)),
+          )),
+          const Text('Thêm danh mục',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 16),
+
+          // Tên danh mục
+          const Text('Tên danh mục',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _nameCtrl,
+            maxLength: 100,
+            autofocus: true,
+            buildCounter: (_, {required currentLength, required isFocused, int? maxLength}) => null,
+            decoration: InputDecoration(
+              hintText:   'VD: Thú cưng, Đồ dùng học tập...',
+              prefixIcon: const Icon(Icons.category_outlined, color: AppColors.primary),
+              errorText:  _error,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Icon (emoji)
+          const Text('Biểu tượng',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: _iconChoices.map((e) => GestureDetector(
+              onTap: () => setState(() => _icon = e),
+              child: Container(
+                width: 40, height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color:        _icon == e ? AppColors.primaryLight : AppColors.bgCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _icon == e ? AppColors.primary : AppColors.divider,
+                    width: 1.5,
+                  ),
+                ),
+                child: Text(e, style: const TextStyle(fontSize: 18)),
+              ),
+            )).toList(),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Màu
+          const Text('Màu sắc',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10, runSpacing: 10,
+            children: _colorChoices.map((hex) => GestureDetector(
+              onTap: () => setState(() => _color = hex),
+              child: Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: _hexToColor(hex),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: _color == hex ? AppColors.textPrimary : Colors.transparent,
+                    width: 3,
+                  ),
+                ),
+              ),
+            )).toList(),
+          ),
+
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 22, height: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                  : const Text('Tạo danh mục'),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
