@@ -30,6 +30,9 @@ dependencies:
   camera: ^0.10.5+9
   http: ^1.2.1
 
+  # Auth — lưu token/user (swap sang flutter_secure_storage khi cần)
+  shared_preferences: ^2.2.3
+
   # Utils
   uuid: ^4.4.0
   intl: ^0.19.0

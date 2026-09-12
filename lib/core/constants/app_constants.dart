@@ -1,3 +1,5 @@
+import '../network/api_config.dart';
+
 abstract class AppConstants {
   static const dbName    = 'shopsnap.db';
   static const dbVersion = 3;
@@ -19,8 +21,7 @@ abstract class AppConstants {
   static const imageMaxHeight = 1080;
   static const imageQuality   = 85;
 
-  // Backend
-  static const backendBaseUrl = 'http://10.0.2.2:3000/api/v1'; // Android emulator → localhost
-  // static const backendBaseUrl = 'http://localhost:3000/api/v1'; // iOS simulator
-  // static const backendBaseUrl = 'https://api.shopsnap.vn/api/v1'; // Production
+  // Backend — chuyển sang core/network/api_config.dart (hỗ trợ --dart-define
+  // SHOPSNAP_API_URL, tự chọn 10.0.2.2 trên Android emulator)
+  static String get backendBaseUrl => ApiConfig.baseUrl;
 }

@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/daos/item_dao.dart';
 import '../models/item_model.dart';
-import '../services/notification_service.dart';
 import 'database_provider.dart';
 import 'budget_provider.dart';
 

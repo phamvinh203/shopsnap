@@ -38,10 +38,10 @@ class _ScanOverlayState extends State<ScanOverlay> with SingleTickerProviderStat
           child: Container(color: Colors.black.withOpacity(0.55)),
         ),
         // Corner decorations
-        Positioned(left: left, top: top, child: _Corner(flip: false, flipV: false)),
-        Positioned(right: left, top: top, child: _Corner(flip: true, flipV: false)),
-        Positioned(left: left, bottom: top, child: _Corner(flip: false, flipV: true)),
-        Positioned(right: left, bottom: top, child: _Corner(flip: true, flipV: true)),
+        Positioned(left: left, top: top, child: const _Corner(flip: false, flipV: false)),
+        Positioned(right: left, top: top, child: const _Corner(flip: true, flipV: false)),
+        Positioned(left: left, bottom: top, child: const _Corner(flip: false, flipV: true)),
+        Positioned(right: left, bottom: top, child: const _Corner(flip: true, flipV: true)),
         // Animated scan line
         Positioned(
           left: left + 2, right: left + 2,
@@ -50,7 +50,7 @@ class _ScanOverlayState extends State<ScanOverlay> with SingleTickerProviderStat
             animation: _anim,
             builder: (_, __) => Container(
               height: 2,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(colors: [
                   Colors.transparent,
                   AppColors.primary,

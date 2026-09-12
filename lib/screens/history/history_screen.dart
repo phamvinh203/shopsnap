@@ -8,7 +8,6 @@ import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
 import '../../database/daos/item_dao.dart';
 import '../../models/item_model.dart';
-import '../../models/summary_model.dart';
 import '../../providers/database_provider.dart';
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -167,9 +166,6 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final totalMap    = { for (final d in data.dailyTotals) d.day: d.total };
-
     return SliverList(
       delegate: SliverChildListDelegate([
         // ── Monthly total ────────────────────────────────────────────────
@@ -177,7 +173,7 @@ class _Body extends ConsumerWidget {
           margin:  const EdgeInsets.fromLTRB(16, 16, 16, 0),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               colors: [AppColors.primary, AppColors.primaryDark],
             ),
             borderRadius: BorderRadius.circular(16),
@@ -248,9 +244,9 @@ class _Body extends ConsumerWidget {
                       );
                     }).toList(),
                     titlesData: FlTitlesData(
-                      leftTitles:   AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles:  AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles:    AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles:  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
@@ -269,7 +265,7 @@ class _Body extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    gridData:   FlGridData(show: false),
+                    gridData:   const FlGridData(show: false),
                     borderData: FlBorderData(show: false),
                   ),
                 ),
@@ -342,7 +338,7 @@ class _DayItemList extends ConsumerWidget {
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: AppColors.primaryLight,
-                child: Text(item.categoryIcon ?? '🛍',
+                child: Text(item.categoryIcon,
                     style: const TextStyle(fontSize: 18)),
               ),
               title:    Text(item.name,

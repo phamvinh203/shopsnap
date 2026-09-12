@@ -7,7 +7,6 @@ ThemeData buildAppTheme() {
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
-      background: AppColors.bgMain,
       surface: AppColors.bgCard,
     ),
     scaffoldBackgroundColor: AppColors.bgMain,

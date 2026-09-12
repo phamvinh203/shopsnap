@@ -154,7 +154,7 @@ class _SummaryBody extends StatelessWidget {
             margin:  const EdgeInsets.fromLTRB(16, 16, 16, 0),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
+              gradient: const LinearGradient(
                 colors: [AppColors.primary, AppColors.primaryDark],
                 begin:  Alignment.topLeft,
                 end:    Alignment.bottomRight,

@@ -166,7 +166,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             const SizedBox(height: 20),
 
             // ── Tên sản phẩm ──────────────────────────────────────────
-            _Label('Tên sản phẩm'),
+            const _Label('Tên sản phẩm'),
             const SizedBox(height: 6),
             TextFormField(
               controller:  _nameCtrl,
@@ -182,7 +182,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             const SizedBox(height: 16),
 
             // ── Giá tiền ──────────────────────────────────────────────
-            _Label('Giá tiền (đ)'),
+            const _Label('Giá tiền (đ)'),
             const SizedBox(height: 6),
             TextFormField(
               controller:  _priceCtrl,
@@ -213,7 +213,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             const SizedBox(height: 20),
 
             // ── Danh mục ──────────────────────────────────────────────
-            _Label('Danh mục'),
+            const _Label('Danh mục'),
             const SizedBox(height: 8),
             catsAsync.when(
               data: (cats) => CategorySelector(
@@ -228,7 +228,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             const SizedBox(height: 20),
 
             // ── Ghi chú ───────────────────────────────────────────────
-            _Label('Ghi chú (tuỳ chọn)'),
+            const _Label('Ghi chú (tuỳ chọn)'),
             const SizedBox(height: 6),
             TextFormField(
               controller: _noteCtrl,

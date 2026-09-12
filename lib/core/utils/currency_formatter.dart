@@ -8,7 +8,7 @@ abstract class CurrencyFormatter {
   static String formatShort(int amountVnd) {
     if (amountVnd >= 1000000) return '${(amountVnd / 1000000).toStringAsFixed(1)}tr';
     if (amountVnd >= 1000)    return '${(amountVnd / 1000).toStringAsFixed(0)}k';
-    return '${amountVnd}đ';
+    return '$amountVndđ';
   }
 
   static int parse(String text) {

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shopsnap/core/theme/app_colors.dart';
-import 'package:shopsnap/core/utils/currency_formatter.dart';
 import 'package:shopsnap/services/ocr_service.dart';
 
 class OcrResultList extends StatefulWidget {

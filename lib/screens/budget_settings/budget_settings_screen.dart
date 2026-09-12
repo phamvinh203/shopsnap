@@ -139,7 +139,7 @@ class _BudgetCard extends StatelessWidget {
             : AppColors.success;
     final catName  = b.categoryId != null
         ? (cats.firstWhere((c) => c.id == b.categoryId,
-                orElse: () => CategoryModel(id: '', name: 'Khác', icon: '🛍',
+                orElse: () => const CategoryModel(id: '', name: 'Khác', icon: '🛍',
                     color: '#6C63FF', isDefault: false, sortOrder: 0, createdAt: 0))
               .name)
         : 'Tất cả danh mục';

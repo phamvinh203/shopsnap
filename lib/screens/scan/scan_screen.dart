@@ -231,7 +231,7 @@ class _CircleBtn extends StatelessWidget {
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
+      decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
       child: Icon(icon, color: Colors.white, size: 22),
     ),
   );
