@@ -5,6 +5,7 @@ import '../database/daos/item_dao.dart';
 import '../models/item_model.dart';
 import '../services/item_api_service.dart';
 import 'auth_provider.dart';
+import 'all_budgets_provider.dart';
 import 'budget_provider.dart';
 import 'categories_provider.dart';
 import 'database_provider.dart';
@@ -112,6 +113,8 @@ class ItemsNotifier extends AsyncNotifier<List<ItemModel>> {
         ), force: force);
         await dao.upsertSynced(created.copyWith(imagePath: dto.imagePath));
         ref.invalidateSelf();
+        // Spent của budget đổi theo item mới → làm mới danh sách budget
+        ref.invalidate(allBudgetsProvider);
         await ref.read(budgetStatusProvider.notifier).checkAndAlert();
         return;
       } on ApiException catch (e) {
@@ -123,6 +126,7 @@ class ItemsNotifier extends AsyncNotifier<List<ItemModel>> {
 
     await dao.insert(dto);
     ref.invalidateSelf();
+    ref.invalidate(allBudgetsProvider);
     // Check budget after adding
     await ref.read(budgetStatusProvider.notifier).checkAndAlert();
   }
@@ -149,6 +153,7 @@ class ItemsNotifier extends AsyncNotifier<List<ItemModel>> {
         );
         await dao.upsertSynced(updated);
         ref.invalidateSelf();
+        ref.invalidate(allBudgetsProvider); // giá item đổi → spent đổi
         return;
       } on ApiException catch (e) {
         if (e.statusCode != null && e.code != 'ITEM_NOT_FOUND') rethrow;
@@ -159,6 +164,7 @@ class ItemsNotifier extends AsyncNotifier<List<ItemModel>> {
     await dao.updateLocal(id,
         name: name, price: price, categoryId: categoryId, note: note, barcode: barcode);
     ref.invalidateSelf();
+    ref.invalidate(allBudgetsProvider); // giá item đổi → spent đổi
   }
 
   /// Xoá item (soft delete):
@@ -181,6 +187,7 @@ class ItemsNotifier extends AsyncNotifier<List<ItemModel>> {
 
     await dao.softDelete(id);
     ref.invalidateSelf();
+    ref.invalidate(allBudgetsProvider); // xoá item → spent giảm
   }
 }
 

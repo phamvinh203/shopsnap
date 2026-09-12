@@ -3,11 +3,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../models/budget_model.dart';
 import '../../models/category_model.dart';
 import '../../providers/all_budgets_provider.dart';
 import '../../providers/categories_provider.dart';
+
+/// Snackbar lỗi tiếng Việt chung cho screen (lỗi nghiệp vụ từ server khi
+/// online: trùng kỳ, allocated > total, ngày không hợp lệ...).
+void _showError(BuildContext context, Object error) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content:  Text(apiErrorMessage(error)),
+    backgroundColor: AppColors.danger,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    margin:   const EdgeInsets.all(12),
+  ));
+}
 
 class BudgetSettingsScreen extends ConsumerWidget {
   const BudgetSettingsScreen({super.key});
@@ -62,6 +75,7 @@ class BudgetSettingsScreen extends ConsumerWidget {
       backgroundColor:    Colors.transparent,
       builder: (_) => _BudgetFormSheet(
         cats:    cats,
+        // Ném lỗi lên sheet tự bắt → sheet không đóng, snackbar hiện lỗi
         onSave: (amount, period, catId) =>
             ref.read(allBudgetsProvider.notifier).addBudget(
               amount:     amount,
@@ -108,8 +122,11 @@ class BudgetSettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (ok == true) {
-      ref.read(allBudgetsProvider.notifier).deleteBudget(id);
+    if (ok != true || !context.mounted) return;
+    try {
+      await ref.read(allBudgetsProvider.notifier).deleteBudget(id);
+    } catch (e) {
+      if (context.mounted) _showError(context, e);
     }
   }
 }
@@ -147,6 +164,7 @@ class _BudgetCard extends StatelessWidget {
       BudgetPeriod.day   => 'Hôm nay',
       BudgetPeriod.week  => 'Tuần này',
       BudgetPeriod.month => 'Tháng này',
+      BudgetPeriod.custom => 'Tuỳ chỉnh', // chỉ có ở server, không persist
     };
 
     return Card(
@@ -242,7 +260,10 @@ class _BudgetFormSheet extends StatefulWidget {
   final BudgetPeriod? initialPeriod;
   final String?       initialCatId;
   final bool          isEdit;
-  final void Function(int amount, BudgetPeriod period, String? catId) onSave;
+
+  /// Lưu form — Future hoàn tất = thành công; ném lỗi = giữ sheet mở để
+  /// người dùng sửa lại (lỗi nghiệp vụ server khi online: trùng kỳ...).
+  final Future<void> Function(int amount, BudgetPeriod period, String? catId) onSave;
 
   const _BudgetFormSheet({
     required this.cats,
@@ -261,6 +282,7 @@ class _BudgetFormSheetState extends State<_BudgetFormSheet> {
   late final TextEditingController _amountCtrl;
   late BudgetPeriod _period;
   String? _catId;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -357,19 +379,34 @@ class _BudgetFormSheetState extends State<_BudgetFormSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    final amount = int.tryParse(_amountCtrl.text.trim());
-                    if (amount == null || amount <= 0) return;
-                    widget.onSave(amount, _period, _catId);
-                    Navigator.pop(context);
-                  },
-                  child: Text(widget.isEdit ? 'Cập nhật' : 'Tạo ngân sách'),
+                  onPressed: _saving ? null : _submit,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(widget.isEdit ? 'Cập nhật' : 'Tạo ngân sách'),
                 ),
               ),
             ],
           ),
         ),
       );
+
+  /// Gửi form: thành công → đóng sheet; lỗi (validation local lọt qua hoặc
+  /// lỗi nghiệp vụ server khi online) → giữ sheet + snackbar tiếng Việt.
+  Future<void> _submit() async {
+    final amount = int.tryParse(_amountCtrl.text.trim());
+    if (amount == null || amount <= 0) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onSave(amount, _period, _catId);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) _showError(context, e);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────

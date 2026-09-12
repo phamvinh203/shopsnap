@@ -1,15 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../database/daos/budget_dao.dart';
 import '../models/budget_model.dart';
 import '../services/notification_service.dart';
 import '../core/constants/app_constants.dart';
-import 'database_provider.dart';
+import 'all_budgets_provider.dart';
 
+/// Ngân sách tổng đang chạy hôm nay (cho BudgetProgressCard ở home).
+///
+/// Wave 4: dẫn xuất từ [allBudgetsProvider] thay vì đọc DAO trực tiếp —
+/// allBudgetsProvider đã merge server + local (server tính spent theo
+/// purchase_date, kèm ngày đã căn theo kỳ) nên card hiển thị đúng giá trị
+/// server khi online, tự rơi về tính toán local khi offline. Budget "tổng"
+/// = budget không gắn vào 1 danh mục cụ thể (category_id null).
 class BudgetStatusNotifier extends AsyncNotifier<BudgetStatus?> {
   @override
   Future<BudgetStatus?> build() async {
-    final db = await ref.watch(databaseProvider.future);
-    return BudgetDao(db).getTodayOverallBudget();
+    final all = await ref.watch(allBudgetsProvider.future);
+    for (final status in all) {
+      if (status.budget.categoryId == null) return status;
+    }
+    return null;
   }
 
   Future<void> checkAndAlert() async {

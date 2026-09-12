@@ -10,6 +10,40 @@ class BudgetDao {
     return budget.id;
   }
 
+  /// Upsert budget nhận về từ server (Wave 4 — sync một chiều server → local).
+  ///
+  /// - `ConflictAlgorithm.replace`: id trùng → đè bằng bản mới nhất của server
+  ///   (kèm ngày đã căn lại theo kỳ — week T2–CN, month đầu–cuối tháng).
+  /// - computed fields (spent/percentage...) không có cột tương ứng → chỉ giữ
+  ///   in-memory trên model, offline vẫn tính lại từ items.
+  /// - Budget `custom` không lưu được (CHECK period IN day/week/month) → bỏ qua
+  ///   persist, budget này chỉ hiển thị trong phiên nhờ provider merge server.
+  /// - FK(category_id → categories): category chỉ tồn tại trên server → tạo row
+  ///   category tối thiểu từ category nhúng trong response (cách ItemDao làm).
+  Future<void> upsertSynced(BudgetModel budget) async {
+    if (budget.period == BudgetPeriod.custom) return;
+    await db.transaction((txn) async {
+      if (budget.categoryId != null) {
+        final catExists = await txn.query('categories',
+            where: 'id = ?', whereArgs: [budget.categoryId], limit: 1);
+        if (catExists.isEmpty) {
+          final line = budget.categoryBudgets.isNotEmpty ? budget.categoryBudgets.first : null;
+          await txn.insert('categories', {
+            'id':         budget.categoryId,
+            'name':       (line?.categoryName?.isNotEmpty ?? false) ? line!.categoryName! : 'Danh mục',
+            'icon':       line?.categoryIcon ?? '🛍️',
+            'color':      line?.categoryColor ?? '#6C63FF',
+            'is_default': 0,
+            'sort_order': 10000, // xếp cuối danh sách, dưới seed + custom
+            'created_at': budget.createdAt,
+          });
+        }
+      }
+      await txn.insert('budgets', budget.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
   Future<void> update(BudgetModel budget) async {
     await db.update('budgets', budget.toMap(), where: 'id = ?', whereArgs: [budget.id]);
   }

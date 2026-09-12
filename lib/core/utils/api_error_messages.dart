@@ -49,6 +49,24 @@ String apiErrorMessage(Object error) {
       return 'Chỉ thêm được tối đa 50 vật phẩm mỗi lần.';
     case 'ITEM_CREATE_FAILED':
       return 'Không thể lưu vật phẩm. Vui lòng thử lại.';
+
+    // ── Budgets (Wave 4) ────────────────────────────────────────────────────
+    case 'BUDGET_OVERLAP':
+      return 'Khoảng thời gian này trùng với một ngân sách khác cùng loại.';
+    case 'BUDGET_DATE_INVALID':
+      return 'Ngày bắt đầu / kết thúc không hợp lệ. Vui lòng kiểm tra lại.';
+    case 'BUDGET_NEGATIVE_AMOUNT':
+      return 'Số tiền ngân sách phải lớn hơn 0.';
+    case 'BUDGET_ALLOCATED_EXCEEDS_TOTAL':
+      return 'Tổng tiền phân bổ cho các danh mục vượt quá tổng ngân sách.';
+    case 'BUDGET_CATEGORY_CONFLICT':
+      return 'Mỗi danh mục chỉ được phân bổ một lần trong ngân sách.';
+    case 'BUDGET_CATEGORY_NOT_FOUND':
+      return 'Danh mục trong ngân sách không tồn tại (có thể đã bị xóa).';
+    case 'BUDGET_NOT_FOUND':
+      return 'Không tìm thấy ngân sách (có thể đã bị xóa).';
+    case 'BUDGET_INVALID':
+      return 'Dữ liệu ngân sách chưa hợp lệ. Vui lòng kiểm tra lại.';
   }
 
   switch (error.statusCode) {
