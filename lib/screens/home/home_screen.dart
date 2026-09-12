@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
 import '../../models/item_model.dart';
@@ -142,7 +143,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) => ItemCard(
                           item:     filtered[index],
-                          onDelete: () => ref.read(itemsProvider.notifier).deleteItem(filtered[index].id),
+                          onDelete: () => _deleteItem(filtered[index]),
                           onTap:    () {},
                         ),
                         childCount: filtered.length,
@@ -173,6 +174,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<ItemModel> _applyFilter(List<ItemModel> items) {
     if (_filterCategory == null) return items;
     return items.where((i) => i.categoryId == _filterCategory).toList();
+  }
+
+  /// Xoá item — lỗi từ server (404/500, không phải mạng) → snackbar tiếng Việt;
+  /// mất mạng thì deleteItem đã tự soft delete local nên không bao giờ kẹt.
+  Future<void> _deleteItem(ItemModel item) async {
+    try {
+      await ref.read(itemsProvider.notifier).deleteItem(item.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:  Text(apiErrorMessage(e)),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin:   const EdgeInsets.all(12),
+        ));
+      }
+    }
   }
 }
 

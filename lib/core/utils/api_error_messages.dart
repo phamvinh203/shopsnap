@@ -31,6 +31,24 @@ String apiErrorMessage(Object error) {
       return 'Danh mục cha không hợp lệ. Chỉ được dùng danh mục custom của bạn.';
     case 'CATEGORY_NOT_FOUND':
       return 'Không tìm thấy danh mục.';
+
+    // ── Items (Wave 3) ──────────────────────────────────────────────────────
+    case 'ITEM_DUPLICATE':
+      return 'Bạn vừa thêm sản phẩm này cách đây không lâu.';
+    case 'ITEM_NOT_FOUND':
+      return 'Không tìm thấy vật phẩm (có thể đã bị xóa).';
+    case 'ITEM_INVALID_PRICE':
+      return 'Giá tiền không hợp lệ.';
+    case 'ITEM_INVALID_CATEGORY':
+      return 'Danh mục của vật phẩm không hợp lệ.';
+    case 'ITEM_INVALID_SORT':
+      return 'Cách sắp xếp không hợp lệ.';
+    case 'ITEM_EMPTY_UPDATE':
+      return 'Không có thông tin nào để cập nhật.';
+    case 'ITEM_BULK_TOO_LARGE':
+      return 'Chỉ thêm được tối đa 50 vật phẩm mỗi lần.';
+    case 'ITEM_CREATE_FAILED':
+      return 'Không thể lưu vật phẩm. Vui lòng thử lại.';
   }
 
   switch (error.statusCode) {

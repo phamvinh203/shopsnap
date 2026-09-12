@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
@@ -128,18 +129,22 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
     if (created != null && mounted) _onCategoryPicked(created.id);
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool force = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
     try {
+      // User để mặc định "Khác" (không tự chọn, classifier/suggest cũng không
+      // match) → bỏ category_id cho server auto-classify (BR-04) — server trả
+      // category chuẩn rồi upsert ngược về local.
+      final fallbackOther = !_manualCategory && _selectedCategory == 'cat_other';
       await ref.read(itemsProvider.notifier).addItem(CreateItemDto(
         name:       _nameCtrl.text.trim(),
         price:      CurrencyFormatter.parse(_priceCtrl.text),
-        categoryId: _selectedCategory,
+        categoryId: fallbackOther ? null : _selectedCategory,
         imagePath:  _imagePath,
         note:       _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-      ));
+      ), force: force);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,6 +163,27 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
         );
         context.pop();
       }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      // 409 ITEM_DUPLICATE — server nghi item trùng vừa thêm (cùng giá + danh
+      // mục + cửa hàng trong 5 phút) → hỏi user có muốn ghi lại lần nữa không.
+      if (e.code == 'ITEM_DUPLICATE') {
+        final retry = await _confirmDuplicateSave(e.message);
+        if (retry && mounted) {
+          setState(() => _isSaving = false);
+          await _save(force: true); // POST lại với ?force=true
+        }
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(apiErrorMessage(e)),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(12),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -168,6 +194,27 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+
+  /// Dialog xác nhận khi server trả 409 ITEM_DUPLICATE:
+  /// true = "Ghi lại lần nữa" (POST lại với force=true), false = Huỷ.
+  Future<bool> _confirmDuplicateSave(String serverMessage) => showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Vật phẩm trùng?'),
+      content: Text(
+        '$serverMessage\n'
+        'Bạn muốn ghi lại lần nữa chứ?',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Ghi lại lần nữa',
+              style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  ).then((v) => v == true);
 
   @override
   Widget build(BuildContext context) {

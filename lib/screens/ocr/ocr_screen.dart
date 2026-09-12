@@ -55,7 +55,7 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
       await ref.read(itemsProvider.notifier).addItem(CreateItemDto(
         name: item.name.trim(), price: item.price, categoryId: item.categoryId,
         imagePath: _imagePath,
-      ));
+      ), source: 'ocr'); // đánh dấu nguồn để thống kê server-side
     }
 
     if (mounted) {
