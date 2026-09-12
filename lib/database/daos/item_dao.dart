@@ -166,7 +166,9 @@ class ItemDao {
         where: 'id = ? AND is_deleted = 0', whereArgs: [id]);
   }
 
-  Future<List<ItemModel>> findByDay(DateTime day) async {
+  /// Item trong khoảng ngày [start, end] (bao cả 2 đầu) — cùng SQL với
+  /// findByDay, mở rộng cho summary các kỳ week/month/year (Wave 5).
+  Future<List<ItemModel>> findByRange(DateTime start, DateTime end) async {
     final rows = await db.rawQuery('''
       SELECT i.*, c.name AS cat_name, c.icon AS cat_icon, c.color AS cat_color
       FROM items i
@@ -174,13 +176,18 @@ class ItemDao {
       WHERE i.created_at >= ? AND i.created_at < ?
         AND i.is_deleted = 0
       ORDER BY i.created_at ASC
-    ''', [DateHelper.dayStart(day), DateHelper.dayEnd(day)]);
+    ''', [DateHelper.dayStart(start), DateHelper.dayEnd(end)]);
     return rows.map(ItemModel.fromMap).toList();
   }
 
-  Future<SummaryModel> getSummaryForDay(DateTime day) async {
-    final start = DateHelper.dayStart(day);
-    final end   = DateHelper.dayEnd(day);
+  Future<List<ItemModel>> findByDay(DateTime day) => findByRange(day, day);
+
+  /// Tổng hợp summary cho khoảng ngày [start, end] (bao cả 2 đầu) — cùng phép
+  /// tính GROUP BY category như getSummaryForDay, làm fallback offline cho
+  /// summary API theo kỳ week/month/year (Wave 5).
+  Future<SummaryModel> getSummaryForRange(DateTime start, DateTime end) async {
+    final startMs = DateHelper.dayStart(start);
+    final endMs   = DateHelper.dayEnd(end);
 
     final catRows = await db.rawQuery('''
       SELECT
@@ -196,17 +203,20 @@ class ItemDao {
         AND i.is_deleted = 0
       GROUP BY i.category_id
       ORDER BY total_spent DESC
-    ''', [start, end]);
+    ''', [startMs, endMs]);
 
-    final items = await findByDay(day);
+    final items = await findByRange(start, end);
     final cats  = catRows.map(CategorySummary.fromMap).toList();
     final total = cats.fold(0, (s, c) => s + c.totalSpent);
 
     return SummaryModel(
-      date: day, totalSpent: total,
+      date: start, totalSpent: total,
       itemCount: items.length, categories: cats, items: items,
     );
   }
+
+  Future<SummaryModel> getSummaryForDay(DateTime day) =>
+      getSummaryForRange(day, day);
 
   Future<({int? lastPrice, int? avgPrice})> getPriceHint(String name, String? barcode) async {
     final since = DateTime.now()

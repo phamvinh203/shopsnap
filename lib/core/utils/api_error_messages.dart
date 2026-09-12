@@ -67,6 +67,12 @@ String apiErrorMessage(Object error) {
       return 'Không tìm thấy ngân sách (có thể đã bị xóa).';
     case 'BUDGET_INVALID':
       return 'Dữ liệu ngân sách chưa hợp lệ. Vui lòng kiểm tra lại.';
+
+    // ── Summary (Wave 5) ────────────────────────────────────────────────────
+    case 'SUMMARY_INVALID_PERIOD':
+      return 'Kỳ thống kê hoặc ngày không hợp lệ. Vui lòng kiểm tra lại.';
+    case 'SUMMARY_DATE_RANGE_TOO_LARGE':
+      return 'Khoảng thống kê tối đa 366 ngày. Vui lòng chọn phạm vi ngắn hơn.';
   }
 
   switch (error.statusCode) {

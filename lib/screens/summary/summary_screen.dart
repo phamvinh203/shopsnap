@@ -1,12 +1,18 @@
+import 'dart:io';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
 import '../../models/summary_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/summary_provider.dart';
+import '../../services/summary_api_service.dart';
 
 class SummaryScreen extends ConsumerStatefulWidget {
   const SummaryScreen({super.key});
@@ -17,20 +23,37 @@ class SummaryScreen extends ConsumerStatefulWidget {
 
 class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   DateTime _date = DateTime.now();
+  String   _period = 'day'; // day | week | month | year
   int?     _touchedIndex;
+  bool     _exporting = false;
 
-  void _prevDay() => setState(() { _date = _date.subtract(const Duration(days: 1)); _touchedIndex = null; });
-  void _nextDay() {
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    if (_date.isBefore(DateTime(tomorrow.year, tomorrow.month, tomorrow.day))) {
-      setState(() { _date = _date.add(const Duration(days: 1)); _touchedIndex = null; });
+  DateTime get _today => DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+  void _prevPeriod() => setState(() {
+        _date = shiftDateByPeriod(_date, _period, -1);
+        _touchedIndex = null;
+      });
+
+  void _nextPeriod() {
+    final next = shiftDateByPeriod(_date, _period, 1);
+    if (!next.isAfter(_today)) {
+      setState(() { _date = next; _touchedIndex = null; });
     }
   }
 
+  void _selectPeriod(String period) => setState(() {
+        _period = period;
+        _touchedIndex = null;
+      });
+
   @override
   Widget build(BuildContext context) {
-    final summaryAsync = ref.watch(summaryProvider(_date));
-    final isToday = DateHelper.isSameDay(_date, DateTime.now());
+    final params       = SummaryParams(date: _date, period: _period);
+    final summaryAsync = ref.watch(summaryProvider(params));
+    // Response server thô → comparison/trend (summaryProvider đã merge số chính)
+    final comparison   = ref.watch(serverSummaryProvider(params)).valueOrNull?.comparison;
+    final insights     = ref.watch(summaryInsightsProvider(params)).valueOrNull ?? const <SpendingInsight>[];
+    final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
 
     return Scaffold(
       backgroundColor: AppColors.bgMain,
@@ -43,15 +66,37 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             surfaceTintColor: Colors.transparent,
             title: const Text('Tổng kết chi tiêu',
                 style: TextStyle(fontWeight: FontWeight.w700)),
+            // Xuất CSV cho kỳ đang xem — chỉ khi đã đăng nhập (API cần Bearer)
+            actions: [
+              if (authenticated)
+                _exporting
+                    ? const Padding(
+                        padding: EdgeInsets.only(right: 16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        icon:     const Icon(Icons.download_outlined),
+                        tooltip:  'Xuất CSV',
+                        onPressed: _exportCsv,
+                      ),
+            ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(52),
-              child: _DateNavBar(
-                date:    _date,
-                isToday: isToday,
-                onPrev:  _prevDay,
-                onNext:  _nextDay,
-                onPick:  _pickDate,
-              ),
+              preferredSize: const Size.fromHeight(94),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                _DateNavBar(
+                  date:    _date,
+                  isToday: DateHelper.isSameDay(_date, DateTime.now()),
+                  onPrev:  _prevPeriod,
+                  onNext:  _nextPeriod,
+                  onPick:  _pickDate,
+                ),
+                _PeriodTabs(period: _period, onSelected: _selectPeriod),
+              ]),
             ),
           ),
 
@@ -63,9 +108,12 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
               child: Center(child: Text('Lỗi: $e')),
             ),
             data: (summary) => summary.totalSpent == 0
-                ? SliverFillRemaining(child: _EmptyState(date: _date))
+                ? SliverFillRemaining(child: _EmptyState(date: _date, period: _period))
                 : _SummaryBody(
                     summary:      summary,
+                    comparison:   comparison,
+                    insights:     insights,
+                    showItems:    _period == 'day', // API /summary không trả items
                     touchedIndex: _touchedIndex,
                     onTouch:      (i) => setState(() => _touchedIndex = i),
                   ),
@@ -84,6 +132,70 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     );
     if (picked != null) setState(() { _date = picked; _touchedIndex = null; });
   }
+
+  /// Xuất CSV của kỳ đang xem (khoảng ngày server-căn qua SummaryParams) vào
+  /// thư mục Documents rồi báo path qua snackbar. Lỗi API → thông điệp VN.
+  Future<void> _exportCsv() async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+
+    try {
+      final range = SummaryParams(date: _date, period: _period).localRange;
+      final csv = await ref.read(summaryApiServiceProvider).exportCsv(
+        dateFrom: SummaryParams.fmt(range.$1),
+        dateTo:   SummaryParams.fmt(range.$2),
+      );
+
+      final dir  = await getApplicationDocumentsDirectory();
+      // Cùng quy ước tên file với Content-Disposition của backend (YYYY-MM)
+      final path = '${dir.path}/shopsnap-export-${SummaryParams.fmt(range.$1).substring(0, 7)}.csv';
+      await File(path).writeAsString(csv); // UTF-8 mặc định — giữ nguyên BOM \uFEFF
+
+      messenger.showSnackBar(SnackBar(content: Text('Đã xuất CSV: $path')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content:         Text('Không xuất được CSV: ${apiErrorMessage(e)}'),
+        backgroundColor: AppColors.danger,
+      ));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+}
+
+// ── Period tabs ───────────────────────────────────────────────────────────────
+
+class _PeriodTabs extends StatelessWidget {
+  final String period;
+  final ValueChanged<String> onSelected;
+
+  const _PeriodTabs({required this.period, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: SizedBox(
+          height: 36,
+          child: SegmentedButton<String>(
+            selected:          {period},
+            showSelectedIcon:  false,
+            onSelectionChanged: (s) => onSelected(s.first),
+            style: const ButtonStyle(
+              visualDensity: VisualDensity(horizontal: -3, vertical: -2),
+              textStyle: WidgetStatePropertyAll(TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600,
+              )),
+            ),
+            segments: const [
+              ButtonSegment(value: 'day',   label: Text('Ngày')),
+              ButtonSegment(value: 'week',  label: Text('Tuần')),
+              ButtonSegment(value: 'month', label: Text('Tháng')),
+              ButtonSegment(value: 'year',  label: Text('Năm')),
+            ],
+          ),
+        ),
+      );
 }
 
 // ── Date nav bar ──────────────────────────────────────────────────────────────
@@ -103,7 +215,7 @@ class _DateNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
         child: Row(children: [
           IconButton(icon: const Icon(Icons.chevron_left), onPressed: onPrev),
           Expanded(
@@ -137,11 +249,17 @@ class _DateNavBar extends StatelessWidget {
 
 class _SummaryBody extends StatelessWidget {
   final SummaryModel summary;
+  final SummaryComparison? comparison;
+  final List<SpendingInsight> insights;
+  final bool showItems;
   final int?         touchedIndex;
   final ValueChanged<int?> onTouch;
 
   const _SummaryBody({
     required this.summary,
+    required this.comparison,
+    required this.insights,
+    required this.showItems,
     required this.touchedIndex,
     required this.onTouch,
   });
@@ -172,22 +290,41 @@ class _SummaryBody extends StatelessWidget {
               const Icon(Icons.account_balance_wallet_outlined,
                   color: Colors.white70, size: 36),
               const SizedBox(width: 14),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Tổng chi tiêu',
-                    style: TextStyle(color: Colors.white70, fontSize: 12)),
-                Text(
-                  CurrencyFormatter.format(summary.totalSpent),
-                  style: const TextStyle(
-                    color:      Colors.white,
-                    fontSize:   28,
-                    fontWeight: FontWeight.w800,
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Tổng chi tiêu',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(
+                    CurrencyFormatter.format(summary.totalSpent),
+                    style: const TextStyle(
+                      color:      Colors.white,
+                      fontSize:   28,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                Text(
-                  '${summary.itemCount} vật phẩm',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-              ]),
+                  Text(
+                    '${summary.itemCount} vật phẩm',
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  ),
+                  // So sánh với kỳ liền trước — chỉ có khi lấy được từ server
+                  if (comparison != null) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Icon(_trendIcon(comparison!.trend),
+                          color: Colors.white70, size: 14),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          _trendText(comparison!),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ),
+                    ]),
+                  ],
+                ]),
+              ),
             ]),
           ),
 
@@ -228,38 +365,43 @@ class _SummaryBody extends StatelessWidget {
             ),
           ],
 
-          // ── Item list ───────────────────────────────────────────────────
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-            child: Text('Danh sách vật phẩm',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          ),
-          ...summary.items.map((item) => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Card(
-                  elevation:   0,
-                  color:       Colors.white,
-                  shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppColors.primaryLight,
-                      child: Text(item.categoryIcon,
-                          style: const TextStyle(fontSize: 18)),
-                    ),
-                    title: Text(item.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: Text(DateHelper.formatTime(item.createdAt),
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    trailing: Text(
-                      CurrencyFormatter.format(item.price),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize:   15,
-                          color:      AppColors.primary),
+          // ── Insights (server rule-based, đã là tiếng Việt) ──────────────
+          if (insights.isNotEmpty) _InsightsSection(insights: insights),
+
+          // ── Item list (chỉ kỳ ngày — API /summary không trả items) ──────
+          if (showItems && summary.items.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+              child: Text('Danh sách vật phẩm',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+            ...summary.items.map((item) => Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Card(
+                    elevation:   0,
+                    color:       Colors.white,
+                    shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: AppColors.primaryLight,
+                        child: Text(item.categoryIcon,
+                            style: const TextStyle(fontSize: 18)),
+                      ),
+                      title: Text(item.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text(DateHelper.formatTime(item.createdAt),
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      trailing: Text(
+                        CurrencyFormatter.format(item.price),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize:   15,
+                            color:      AppColors.primary),
+                      ),
                     ),
                   ),
-                ),
-              )),
+                )),
+          ],
 
           const SizedBox(height: 32),
         ]),
@@ -286,6 +428,29 @@ class _SummaryBody extends StatelessWidget {
             color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
       );
     });
+  }
+
+  static IconData _trendIcon(String trend) {
+    switch (trend) {
+      case 'up':   return Icons.trending_up;
+      case 'down': return Icons.trending_down;
+      default:     return Icons.trending_flat;
+    }
+  }
+
+  static String _trendText(SummaryComparison c) {
+    switch (c.trend) {
+      case 'up':
+        return c.changePercentage != null
+            ? '+${c.changePercentage!.toStringAsFixed(0)}% so với kỳ trước'
+            : 'Tăng so với kỳ trước';
+      case 'down':
+        return c.changePercentage != null
+            ? '${c.changePercentage!.toStringAsFixed(0)}% so với kỳ trước'
+            : 'Giảm so với kỳ trước';
+      default:
+        return 'Ngang bằng kỳ trước';
+    }
   }
 }
 
@@ -325,11 +490,82 @@ class _Legend extends StatelessWidget {
       );
 }
 
+// ── Insights section ──────────────────────────────────────────────────────────
+
+class _InsightsSection extends StatelessWidget {
+  final List<SpendingInsight> insights;
+  const _InsightsSection({required this.insights});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: Text('Gợi ý cho bạn',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ),
+          for (final insight in insights)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Card(
+                elevation:   0,
+                color:       Colors.white,
+                shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    backgroundColor: _severityColor(insight.severity).withOpacity(0.12),
+                    child: Icon(_typeIcon(insight.type),
+                        color: _severityColor(insight.severity), size: 20),
+                  ),
+                  title: Text(insight.title,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  subtitle: Text(insight.message,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                ),
+              ),
+            ),
+        ],
+      );
+
+  static IconData _typeIcon(String type) {
+    switch (type) {
+      case 'budget_warning': return Icons.warning_amber_rounded;
+      case 'over_budget':    return Icons.error_outline;
+      case 'category_spike': return Icons.trending_up;
+      case 'best_day':       return Icons.savings_outlined;
+      default:               return Icons.lightbulb_outline;
+    }
+  }
+
+  static Color _severityColor(String severity) {
+    switch (severity) {
+      case 'warning':  return AppColors.warning;
+      case 'positive': return AppColors.success;
+      default:         return AppColors.primary; // info
+    }
+  }
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   final DateTime date;
-  const _EmptyState({required this.date});
+  final String   period;
+  const _EmptyState({required this.date, required this.period});
+
+  String get _message {
+    switch (period) {
+      case 'week':  return 'Tuần này chưa có chi tiêu';
+      case 'month': return 'Tháng này chưa có chi tiêu';
+      case 'year':  return 'Năm nay chưa có chi tiêu';
+      default:
+        return DateHelper.isSameDay(date, DateTime.now())
+            ? 'Hôm nay chưa có chi tiêu'
+            : 'Không có chi tiêu ngày này';
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Center(
@@ -337,9 +573,7 @@ class _EmptyState extends StatelessWidget {
           const Text('🧾', style: TextStyle(fontSize: 56)),
           const SizedBox(height: 16),
           Text(
-            DateHelper.isSameDay(date, DateTime.now())
-                ? 'Hôm nay chưa có chi tiêu'
-                : 'Không có chi tiêu ngày này',
+            _message,
             style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 color:      AppColors.textSecondary),
