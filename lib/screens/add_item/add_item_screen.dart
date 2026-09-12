@@ -14,7 +14,9 @@ import '../../providers/auth_provider.dart';
 import '../../providers/items_provider.dart';
 import '../../providers/categories_provider.dart';
 import '../../providers/database_provider.dart';
+import '../../services/barcode_contribute_service.dart';
 import '../../services/category_classifier.dart';
+import '../scan/widgets/barcode_contribute_sheet.dart';
 import 'widgets/image_picker_section.dart';
 import 'widgets/category_selector.dart';
 import 'widgets/price_comparison_hint.dart';
@@ -43,6 +45,12 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   // Price comparison hints
   int? _lastPrice;
   int? _avgPrice;
+
+  // ── Wave 6: barcode quét được mà lookup không ra sản phẩm ──────────────────
+  // Giữ mã lại để hiện action "Đóng góp thông tin" (POST /barcode/contribute).
+  // Lookup RA sản phẩm thì dữ liệu đã có trên hệ thống → không hiện banner.
+  String? _scannedBarcode;
+  bool    _barcodeNotFound = false;
 
   @override
   void dispose() {
@@ -127,6 +135,51 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
       builder: (_) => const _AddCategorySheet(),
     );
     if (created != null && mounted) _onCategoryPicked(created.id);
+  }
+
+  /// Wave 6 — sheet đóng góp dữ liệu barcode chưa có trên hệ thống
+  /// (POST /barcode/contribute), pre-fill từ những gì user đã nhập ở form.
+  Future<void> _showContributeSheet() async {
+    final barcode = _scannedBarcode;
+    if (barcode == null) return;
+
+    final contributed = await showModalBottomSheet<BarcodeContribution>(
+      context:            context,
+      isScrollControlled: true,
+      backgroundColor:    Colors.transparent,
+      builder: (_) => BarcodeContributeSheet(
+        barcode:      barcode,
+        initialName:  _nameCtrl.text.trim(),
+        initialPrice: _priceCtrl.text.trim().isEmpty ? null : CurrencyFormatter.parse(_priceCtrl.text),
+        categoryId:   _contributeCategoryId(),
+      ),
+    );
+    if (contributed == null || !mounted) return;
+
+    setState(() => _barcodeNotFound = false); // đã đóng góp → gỡ banner
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          const Text('Cảm ơn bạn đã đóng góp!'),
+          if (contributed.message.isNotEmpty)
+            Text(contributed.message, style: const TextStyle(fontSize: 12)),
+        ]),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(12),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// category_id gửi kèm đóng góp — chỉ khi user CHỦ ĐỘNG chọn và là id thật
+  /// của server (id `local_` chưa đồng bộ / mặc định 'Khác' thì bỏ trống:
+  /// đóng góp category sai còn tệ hơn để server tự xử lý khi duyệt).
+  String? _contributeCategoryId() {
+    if (!_manualCategory) return null;
+    final id = _selectedCategory;
+    return (id.isNotEmpty && !id.startsWith('local_')) ? id : null;
   }
 
   Future<void> _save({bool force = false}) async {
@@ -219,6 +272,10 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   @override
   Widget build(BuildContext context) {
     final catsAsync = ref.watch(categoriesProvider);
+    // Banner đóng góp chỉ dành cho user đã đăng nhập (endpoint cần JWT);
+    // offline vẫn hiện — submit lỗi mạng sẽ có message tiếng Việt, không crash.
+    final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
+    final showContributeBar = authenticated && _scannedBarcode != null && _barcodeNotFound;
 
     return Scaffold(
       appBar: AppBar(
@@ -254,6 +311,15 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
                         _manualCategory = true;
                         _suggestedCategoryId = null;
                       }
+                      // Wave 6: giữ barcode khi lookup hụt (result không có
+                      // 'name') để mời đóng góp; đã đóng góp rồi thì thôi.
+                      if (result['barcode'] is String) {
+                        _scannedBarcode  = result['barcode'] as String;
+                        _barcodeNotFound = result['name'] == null && result['contributed'] != true;
+                      } else {
+                        _scannedBarcode  = null;
+                        _barcodeNotFound = false;
+                      }
                     });
                     _onNameChanged(_nameCtrl.text);
                   }
@@ -279,6 +345,36 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
             ]),
 
             const SizedBox(height: 16),
+
+            // ── Wave 6: barcode chưa có dữ liệu → mời đóng góp cho cộng đồng ──
+            if (showContributeBar) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.volunteer_activism_outlined, color: AppColors.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text('Barcode: $_scannedBarcode',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                          overflow: TextOverflow.ellipsis),
+                      const Text('Chưa có dữ liệu — giúp cộng đồng nhé?',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                    ]),
+                  ),
+                  TextButton(
+                    onPressed: _showContributeSheet,
+                    child: const Text('Đóng góp'),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // ── Image picker ─────────────────────────────────────────────
             ImagePickerSection(

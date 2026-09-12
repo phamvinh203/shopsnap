@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shopsnap/core/theme/app_colors.dart';
+import 'package:shopsnap/providers/auth_provider.dart';
+import 'package:shopsnap/services/barcode_contribute_service.dart';
 import 'package:shopsnap/services/barcode_service.dart';
+import 'widgets/barcode_contribute_sheet.dart';
 import 'widgets/scan_overlay.dart';
 
 class ScanScreen extends StatefulWidget {
@@ -134,15 +138,15 @@ class _ScanScreenState extends State<ScanScreen> {
 }
 
 // ── Bottom sheet kết quả ───────────────────────────────────────────────────
-class _ResultSheet extends StatefulWidget {
+class _ResultSheet extends ConsumerStatefulWidget {
   final String barcode;
   final MobileScannerController controller;
   const _ResultSheet({required this.barcode, required this.controller});
   @override
-  State<_ResultSheet> createState() => _ResultSheetState();
+  ConsumerState<_ResultSheet> createState() => _ResultSheetState();
 }
 
-class _ResultSheetState extends State<_ResultSheet> {
+class _ResultSheetState extends ConsumerState<_ResultSheet> {
   BarcodeResult? _result;
   bool _loading = true;
 
@@ -155,6 +159,35 @@ class _ResultSheetState extends State<_ResultSheet> {
   Future<void> _lookup() async {
     final result = await BarcodeService.lookup(widget.barcode);
     if (mounted) setState(() { _result = result; _loading = false; });
+  }
+
+  /// Wave 6 — mở sheet đóng góp dữ liệu cho mã không tìm thấy.
+  /// Thành công → snackbar cảm ơn (kèm message server) rồi đóng sheet kết quả,
+  /// vẫn trả barcode về add_item (kèm cờ `contributed`) để tiếp tục nhập tay.
+  Future<void> _contribute() async {
+    final contributed = await showModalBottomSheet<BarcodeContribution>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BarcodeContributeSheet(barcode: widget.barcode),
+    );
+    if (contributed == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          const Text('Cảm ơn bạn đã đóng góp!'),
+          if (contributed.message.isNotEmpty)
+            Text(contributed.message, style: const TextStyle(fontSize: 12)),
+        ]),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(12),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    Navigator.pop(context, {'barcode': widget.barcode, 'contributed': true});
   }
 
   @override
@@ -178,6 +211,14 @@ class _ResultSheetState extends State<_ResultSheet> {
             onPressed: () => Navigator.pop(context, {'barcode': widget.barcode}),
             child: const Text('Nhập thủ công'),
           ),
+          // Wave 6 — đóng góp dữ liệu cho mã chưa có (ẩn khi chưa đăng nhập:
+          // endpoint cần JWT, không hiện hint thừa cho khách vãng lai)
+          if (ref.watch(authStateProvider).value?.isAuthenticated == true)
+            TextButton.icon(
+              onPressed: _contribute,
+              icon: const Icon(Icons.volunteer_activism_outlined, size: 18),
+              label: const Text('Đóng góp thông tin'),
+            ),
         ] else ...[
           const Icon(Icons.check_circle, color: AppColors.success, size: 40),
           const SizedBox(height: 8),
