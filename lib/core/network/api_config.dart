@@ -1,7 +1,3 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 /// Cấu hình kết nối backend API.
 ///
 /// Base URL được quyết định theo thứ tự ưu tiên:

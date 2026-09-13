@@ -19,8 +19,12 @@ class DatabaseHelper {
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('PRAGMA journal_mode = WAL');
-        await db.execute('PRAGMA cache_size = -4000');
+        try {
+          await db.rawQuery('PRAGMA journal_mode = WAL');
+        } catch (_) {}
+        try {
+          await db.execute('PRAGMA cache_size = -4000');
+        } catch (_) {}
       },
     );
   }

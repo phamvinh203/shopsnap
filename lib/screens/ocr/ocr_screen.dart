@@ -23,7 +23,6 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
   OcrResult?      _result;
   List<OcrItem>   _editedItems = [];
   String?         _imagePath;
-  String?         _storeName;
   DateTime?       _purchaseDate;
   final TextEditingController _storeController = TextEditingController();
 
@@ -46,7 +45,6 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
       setState(() {
         _result      = result;
         _editedItems = List.from(result.items);
-        _storeName   = result.storeName;
         _purchaseDate = result.purchaseDate;
         _storeController.text = result.storeName ?? '';
         _step        = _OcrStep.review;
