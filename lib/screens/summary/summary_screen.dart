@@ -9,10 +9,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
+import '../../models/ai_assistant_model.dart';
 import '../../models/summary_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/summary_provider.dart';
 import '../../services/summary_api_service.dart';
+import 'widgets/ai_assistant_card.dart';
 
 class SummaryScreen extends ConsumerStatefulWidget {
   const SummaryScreen({super.key});
@@ -53,6 +55,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     // Response server thô → comparison/trend (summaryProvider đã merge số chính)
     final comparison   = ref.watch(serverSummaryProvider(params)).valueOrNull?.comparison;
     final insights     = ref.watch(summaryInsightsProvider(params)).valueOrNull ?? const <SpendingInsight>[];
+    final aiAssistant  = ref.watch(aiAssistantProvider(SummaryParams.fmt(_date))).valueOrNull;
     final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
 
     return Scaffold(
@@ -113,6 +116,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                     summary:      summary,
                     comparison:   comparison,
                     insights:     insights,
+                    aiAssistant:  aiAssistant,
                     showItems:    _period == 'day', // API /summary không trả items
                     touchedIndex: _touchedIndex,
                     onTouch:      (i) => setState(() => _touchedIndex = i),
@@ -251,6 +255,7 @@ class _SummaryBody extends StatelessWidget {
   final SummaryModel summary;
   final SummaryComparison? comparison;
   final List<SpendingInsight> insights;
+  final AiAssistantResponse? aiAssistant;
   final bool showItems;
   final int?         touchedIndex;
   final ValueChanged<int?> onTouch;
@@ -259,6 +264,7 @@ class _SummaryBody extends StatelessWidget {
     required this.summary,
     required this.comparison,
     required this.insights,
+    this.aiAssistant,
     required this.showItems,
     required this.touchedIndex,
     required this.onTouch,
@@ -327,6 +333,10 @@ class _SummaryBody extends StatelessWidget {
               ),
             ]),
           ),
+
+          // ── AI Smart Shopping Assistant Card ────────────────────────────
+          if (aiAssistant != null)
+            AiAssistantCard(data: aiAssistant!),
 
           // ── Pie chart ───────────────────────────────────────────────────
           if (summary.categories.isNotEmpty) ...[

@@ -34,6 +34,7 @@ class DatabaseHelper {
     b.execute(_sqlBudgetAlerts);
     b.execute(_sqlSyncQueue);
     b.execute(_sqlSyncMetadata);
+    b.execute(_sqlBarcodeCache);
     b.execute(_sqlMigrations);
     _indexes(b);
     _seedCategories(b);
@@ -43,6 +44,7 @@ class DatabaseHelper {
   static Future<void> _onUpgrade(Database db, int old, int newV) async {
     if (old < 2) await _migrationV2(db);
     if (old < 3) await _migrationV3(db);
+    if (old < 4) await _migrationV4(db);
   }
 
   // ─── Migration v2: sync tables ───────────────────────────────────────────
@@ -64,6 +66,15 @@ class DatabaseHelper {
     await db.execute(_idxItemsSoftDelete);
     await db.insert('schema_migrations', {
       'version': 3, 'name': 'add_sync_columns_to_items',
+      'applied_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  // ─── Migration v4: barcode cache table ───────────────────────────────────
+  static Future<void> _migrationV4(Database db) async {
+    await db.execute(_sqlBarcodeCache);
+    await db.insert('schema_migrations', {
+      'version': 4, 'name': 'add_barcode_cache',
       'applied_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -150,6 +161,16 @@ class DatabaseHelper {
     CREATE TABLE IF NOT EXISTS sync_metadata (
       key           TEXT    PRIMARY KEY,
       value         TEXT    NOT NULL
+    )''';
+
+  static const _sqlBarcodeCache = '''
+    CREATE TABLE IF NOT EXISTS barcode_cache (
+      barcode       TEXT    PRIMARY KEY,
+      product_name  TEXT    NOT NULL,
+      brand         TEXT,
+      category_id   TEXT    NOT NULL,
+      image_url     TEXT,
+      cached_at     INTEGER NOT NULL
     )''';
 
   static const _sqlMigrations = '''

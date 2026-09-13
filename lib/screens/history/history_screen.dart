@@ -9,6 +9,7 @@ import '../../core/utils/date_helper.dart';
 import '../../database/daos/item_dao.dart';
 import '../../models/item_model.dart';
 import '../../providers/database_provider.dart';
+import 'price_history_screen.dart';
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         surfaceTintColor: Colors.transparent,
         title: const Text('Lịch sử chi tiêu',
             style: TextStyle(fontWeight: FontWeight.w700)),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PriceHistoryScreen()),
+              );
+            },
+            icon: const Icon(Icons.show_chart, size: 18, color: AppColors.primary),
+            label: const Text(
+              'Biến động giá',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: CustomScrollView(
         slivers: [

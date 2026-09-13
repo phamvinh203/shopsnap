@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shopsnap/core/theme/app_colors.dart';
+import 'package:shopsnap/database/daos/barcode_cache_dao.dart';
 import 'package:shopsnap/providers/auth_provider.dart';
+import 'package:shopsnap/providers/database_provider.dart';
 import 'package:shopsnap/services/barcode_contribute_service.dart';
 import 'package:shopsnap/services/barcode_service.dart';
 import 'widgets/barcode_contribute_sheet.dart';
@@ -21,8 +24,9 @@ class _ScanScreenState extends State<ScanScreen> {
     torchEnabled: false,
   );
 
-  bool _processing   = false;
-  bool _torchOn      = false;
+  bool _processing     = false;
+  bool _torchOn        = false;
+  bool _isSuccessFlash = false;
   String? _lastCode;
 
   @override
@@ -34,7 +38,14 @@ class _ScanScreenState extends State<ScanScreen> {
     final code = barcode.rawValue!;
     if (code == _lastCode || _processing) return;
 
-    setState(() { _processing = true; _lastCode = code; });
+    HapticFeedback.mediumImpact();
+    SystemSound.play(SystemSoundType.click);
+
+    setState(() {
+      _processing = true;
+      _lastCode = code;
+      _isSuccessFlash = true;
+    });
     await _controller.stop();
 
     if (!mounted) return;
@@ -46,7 +57,7 @@ class _ScanScreenState extends State<ScanScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _ResultSheet(barcode: code, controller: _controller),
     ).then((_) {
-      if (mounted) setState(() { _processing = false; _lastCode = null; });
+      if (mounted) setState(() { _processing = false; _lastCode = null; _isSuccessFlash = false; });
     });
   }
 
@@ -58,7 +69,7 @@ class _ScanScreenState extends State<ScanScreen> {
         // Camera feed
         MobileScanner(controller: _controller, onDetect: _onDetected),
         // Overlay UI
-        const ScanOverlay(),
+        ScanOverlay(isSuccess: _isSuccessFlash),
         // Top bar
         SafeArea(child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -70,6 +81,11 @@ class _ScanScreenState extends State<ScanScreen> {
             const Spacer(),
             const Text('Scan barcode', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
             const Spacer(),
+            _CircleBtn(
+              icon: Icons.flip_camera_ios_outlined,
+              onTap: () => _controller.switchCamera(),
+            ),
+            const SizedBox(width: 10),
             _CircleBtn(
               icon: _torchOn ? Icons.flash_on : Icons.flash_off,
               onTap: () { _controller.toggleTorch(); setState(() => _torchOn = !_torchOn); },
@@ -157,8 +173,15 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
   }
 
   Future<void> _lookup() async {
-    final result = await BarcodeService.lookup(widget.barcode);
-    if (mounted) setState(() { _result = result; _loading = false; });
+    try {
+      final db = await ref.read(databaseProvider.future);
+      final cacheDao = BarcodeCacheDao(db);
+      final result = await BarcodeService.lookup(widget.barcode, cacheDao: cacheDao);
+      if (mounted) setState(() { _result = result; _loading = false; });
+    } catch (_) {
+      final result = await BarcodeService.lookup(widget.barcode);
+      if (mounted) setState(() { _result = result; _loading = false; });
+    }
   }
 
   /// Wave 6 — mở sheet đóng góp dữ liệu cho mã không tìm thấy.
@@ -229,8 +252,23 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
             Text(_result!.brand!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 6),
           Chip(
-            label: Text(_result!.source == BarcodeSource.openFoodFacts ? 'Open Food Facts' : 'ShopSnap DB',
-                style: const TextStyle(fontSize: 11)),
+            avatar: Icon(
+              _result!.source == BarcodeSource.localHistory
+                  ? Icons.offline_pin_outlined
+                  : (_result!.source == BarcodeSource.openFoodFacts
+                      ? Icons.public
+                      : Icons.cloud_done_outlined),
+              size: 16,
+              color: AppColors.primary,
+            ),
+            label: Text(
+              _result!.source == BarcodeSource.localHistory
+                  ? 'Đã lưu Offline'
+                  : (_result!.source == BarcodeSource.openFoodFacts
+                      ? 'Open Food Facts'
+                      : 'ShopSnap Cloud'),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
             backgroundColor: AppColors.primaryLight,
           ),
           const SizedBox(height: 20),

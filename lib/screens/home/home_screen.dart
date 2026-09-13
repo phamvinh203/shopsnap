@@ -8,6 +8,8 @@ import '../../models/item_model.dart';
 import '../../providers/items_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/categories_provider.dart';
+import '../../providers/sync_provider.dart';
+import '../../services/sync_engine.dart';
 import 'widgets/budget_progress_card.dart';
 import 'widgets/category_chips_row.dart';
 import 'widgets/item_card.dart';
@@ -27,12 +29,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final budgetAsync   = ref.watch(budgetStatusProvider);
     final catsAsync     = ref.watch(categoriesProvider);
     final selectedDate  = ref.watch(selectedDateProvider);
+    final syncState     = ref.watch(syncProvider);
 
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.primary,
-          onRefresh: () async => ref.invalidate(itemsProvider),
+          onRefresh: () async {
+            ref.invalidate(itemsProvider);
+            await ref.read(syncProvider.notifier).triggerSync();
+          },
           child: CustomScrollView(
             slivers: [
               // ── Header ──────────────────────────────────────────────────
@@ -49,9 +55,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         Text(DateHelper.formatDate(selectedDate),
                             style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                       ]),
-                      IconButton(
-                        icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
-                        onPressed: () {},
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: syncState.isSyncing
+                                ? 'Đang đồng bộ...'
+                                : (syncState.pendingCount > 0
+                                    ? 'Có ${syncState.pendingCount} thay đổi chờ đồng bộ'
+                                    : 'Dữ liệu đã đồng bộ đám mây'),
+                            icon: syncState.isSyncing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.primary,
+                                    ),
+                                  )
+                                : Badge(
+                                    isLabelVisible: syncState.pendingCount > 0,
+                                    label: Text('${syncState.pendingCount}'),
+                                    child: Icon(
+                                      syncState.pendingCount > 0
+                                          ? Icons.cloud_upload_outlined
+                                          : Icons.cloud_done_outlined,
+                                      color: syncState.status == SyncStatus.error
+                                          ? Colors.orange
+                                          : (syncState.pendingCount > 0 ? AppColors.primary : Colors.green),
+                                    ),
+                                  ),
+                            onPressed: () async {
+                              final res = await ref.read(syncProvider.notifier).triggerSync();
+                              if (context.mounted && res != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(res.isSuccess
+                                        ? 'Đồng bộ xong (đẩy: ${res.pushedCount}, kéo: ${res.pulledCount})'
+                                        : (res.errorMessage ?? 'Đồng bộ thất bại')),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
+                            onPressed: () {},
+                          ),
+                        ],
                       ),
                     ],
                   ),

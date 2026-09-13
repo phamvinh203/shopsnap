@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/daos/item_dao.dart';
+import '../models/ai_assistant_model.dart';
 import '../models/item_model.dart';
 import '../models/summary_model.dart';
 import '../core/utils/date_helper.dart';
@@ -128,6 +129,19 @@ final summaryInsightsProvider =
     );
   } catch (_) {
     return const [];
+  }
+});
+
+/// Trợ lý AI Gemini phân tích chi tiêu, dự báo thâm hụt cuối tháng & mẹo tiết kiệm
+final aiAssistantProvider =
+    FutureProvider.family<AiAssistantResponse?, String?>((ref, dateStr) async {
+  final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
+  if (!authenticated) return null;
+
+  try {
+    return await ref.watch(summaryApiServiceProvider).aiAssistant(date: dateStr);
+  } catch (_) {
+    return null;
   }
 });
 

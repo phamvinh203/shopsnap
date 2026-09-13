@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../core/network/api_client.dart';
 import '../core/network/api_config.dart';
 import '../core/network/api_exception.dart';
+import '../models/ai_assistant_model.dart';
 import '../models/summary_model.dart';
 
 /// Kỳ hợp lệ của backend (`SUMMARY_PERIODS`).
@@ -97,6 +98,14 @@ class SummaryApiService {
         .whereType<Map>()
         .map((j) => SpendingInsight.fromJson(Map<String, dynamic>.from(j)))
         .toList();
+  }
+
+  /// GET /summary/ai-assistant — trợ lý AI Gemini phân tích chi tiêu, dự báo thâm hụt & mẹo tiết kiệm
+  Future<AiAssistantResponse> aiAssistant({String? date}) async {
+    final data = await _client.get('/summary/ai-assistant', auth: true, query: {
+      if (date != null) 'date': date,
+    });
+    return AiAssistantResponse.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   /// GET /summary/export?format=json — data: `{items: [...], categories? , budgets?}`.

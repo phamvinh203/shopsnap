@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shopsnap/core/constants/app_constants.dart';
+import 'package:shopsnap/database/daos/barcode_cache_dao.dart';
 import 'package:shopsnap/services/category_classifier.dart';
 
 class BarcodeResult {
@@ -25,17 +26,34 @@ enum BarcodeSource { localHistory, openFoodFacts, shopSnapServer, notFound }
 
 class BarcodeService {
   // ── Lookup barcode: 3-tier strategy ──────────────────────────────────────
-  // Tier 1: local price_history (đã xử lý ở ItemDao.getPriceHint)
-  // Tier 2: Open Food Facts API (free, no key needed)
-  // Tier 3: ShopSnap backend /barcode/lookup
+  // Tier 1: local cache & price_history (offline tức thì)
+  // Tier 2: Open Food Facts API (toàn cầu, tự động cache)
+  // Tier 3: ShopSnap backend /barcode/lookup (tự động cache)
 
-  static Future<BarcodeResult?> lookup(String barcode) async {
+  static Future<BarcodeResult?> lookup(String barcode, {BarcodeCacheDao? cacheDao}) async {
+    final cleanCode = barcode.trim();
+    if (cleanCode.isEmpty) return null;
+
+    // Tier 1: Local SQLite Cache & Price History
+    if (cacheDao != null) {
+      final cached = await cacheDao.findByBarcode(cleanCode);
+      if (cached != null) return cached;
+    }
+
     // Tier 2: Open Food Facts
-    final offResult = await _queryOpenFoodFacts(barcode);
-    if (offResult != null) return offResult;
+    final offResult = await _queryOpenFoodFacts(cleanCode);
+    if (offResult != null) {
+      if (cacheDao != null) {
+        await cacheDao.insertOrUpdate(offResult);
+      }
+      return offResult;
+    }
 
     // Tier 3: ShopSnap backend
-    final serverResult = await _queryShopSnapServer(barcode);
+    final serverResult = await _queryShopSnapServer(cleanCode);
+    if (serverResult != null && cacheDao != null) {
+      await cacheDao.insertOrUpdate(serverResult);
+    }
     return serverResult;
   }
 

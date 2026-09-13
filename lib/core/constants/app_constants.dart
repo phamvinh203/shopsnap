@@ -2,7 +2,7 @@ import '../network/api_config.dart';
 
 abstract class AppConstants {
   static const dbName    = 'shopsnap.db';
-  static const dbVersion = 3;
+  static const dbVersion = 4;
 
   // Budget alert thresholds
   static const budgetWarnRatio   = 0.80;

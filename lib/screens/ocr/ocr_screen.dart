@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shopsnap/core/theme/app_colors.dart';
 import 'package:shopsnap/core/utils/currency_formatter.dart';
 import 'package:shopsnap/database/daos/item_dao.dart';
+import 'package:shopsnap/providers/auth_provider.dart';
 import 'package:shopsnap/providers/items_provider.dart';
 import 'package:shopsnap/services/ocr_service.dart';
 import 'widgets/ocr_result_list.dart';
@@ -22,6 +23,15 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
   OcrResult?      _result;
   List<OcrItem>   _editedItems = [];
   String?         _imagePath;
+  String?         _storeName;
+  DateTime?       _purchaseDate;
+  final TextEditingController _storeController = TextEditingController();
+
+  @override
+  void dispose() {
+    _storeController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickAndProcess(ImageSource source) async {
     final picker = ImagePicker();
@@ -31,10 +41,14 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
     setState(() { _step = _OcrStep.processing; _imagePath = file.path; });
 
     try {
-      final result = await OcrService.parseReceipt(file.path);
+      final apiClient = ref.read(apiClientProvider);
+      final result = await OcrService.parseReceiptWithVision(file.path, apiClient: apiClient);
       setState(() {
         _result      = result;
         _editedItems = List.from(result.items);
+        _storeName   = result.storeName;
+        _purchaseDate = result.purchaseDate;
+        _storeController.text = result.storeName ?? '';
         _step        = _OcrStep.review;
       });
     } catch (e) {
@@ -51,11 +65,18 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
     final validItems = _editedItems.where((i) => i.name.trim().isNotEmpty && i.price > 0).toList();
     if (validItems.isEmpty) return;
 
+    final store = _storeController.text.trim();
+    final note = store.isNotEmpty ? 'Mua tại: $store' : null;
+    final sourceTag = _result?.source == OcrSource.geminiVision ? 'gemini_vision' : 'ocr';
+
     for (final item in validItems) {
       await ref.read(itemsProvider.notifier).addItem(CreateItemDto(
-        name: item.name.trim(), price: item.price, categoryId: item.categoryId,
+        name: item.name.trim(),
+        price: item.price,
+        categoryId: item.categoryId,
         imagePath: _imagePath,
-      ), source: 'ocr'); // đánh dấu nguồn để thống kê server-side
+        note: note,
+      ), source: sourceTag); // đánh dấu nguồn để thống kê server-side
     }
 
     if (mounted) {
@@ -159,34 +180,99 @@ class _OcrScreenState extends ConsumerState<OcrScreen> {
     final quality = _result?.quality;
 
     return Column(children: [
-      // Quality banner
-      if (quality != null)
-        Container(
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: _qualityColor(quality).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _qualityColor(quality).withOpacity(0.3)),
+      // Source & Quality banner
+      Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: _result?.source == OcrSource.geminiVision
+              ? const Color(0xFF8B5CF6).withOpacity(0.12)
+              : (_qualityColor(quality ?? OcrQuality.fair)).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _result?.source == OcrSource.geminiVision
+                ? const Color(0xFF8B5CF6).withOpacity(0.4)
+                : (_qualityColor(quality ?? OcrQuality.fair)).withOpacity(0.3),
           ),
-          child: Row(children: [
-            Icon(_qualityIcon(quality), color: _qualityColor(quality), size: 16),
-            const SizedBox(width: 8),
-            Text(_qualityText(quality),
-                style: TextStyle(color: _qualityColor(quality), fontSize: 12, fontWeight: FontWeight.w500)),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => setState(() => _step = _OcrStep.idle),
-              child: const Text('Chụp lại', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
-            ),
-          ]),
         ),
+        child: Row(children: [
+          Icon(
+            _result?.source == OcrSource.geminiVision ? Icons.auto_awesome : _qualityIcon(quality ?? OcrQuality.fair),
+            color: _result?.source == OcrSource.geminiVision ? const Color(0xFF8B5CF6) : _qualityColor(quality ?? OcrQuality.fair),
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _result?.source == OcrSource.geminiVision
+                  ? '✨ Phân tích bởi Gemini AI Vision'
+                  : _qualityText(quality ?? OcrQuality.fair),
+              style: TextStyle(
+                color: _result?.source == OcrSource.geminiVision ? const Color(0xFF7C3AED) : _qualityColor(quality ?? OcrQuality.fair),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _step = _OcrStep.idle),
+            child: const Text('Chụp lại', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      ),
 
       // Items list
       Expanded(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Store & Date card
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.storefront_outlined, size: 18, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _storeController,
+                          decoration: const InputDecoration(
+                            hintText: 'Tên siêu thị / cửa hàng (tùy chọn)',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            border: InputBorder.none,
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_purchaseDate != null) ...[
+                    const Divider(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.textSecondary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Ngày mua: ${_purchaseDate!.day}/${_purchaseDate!.month}/${_purchaseDate!.year}',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
             Row(children: [
               Text('Nhận diện được ${_editedItems.length} items',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
