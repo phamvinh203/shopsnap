@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/constants/app_constants.dart';
 import '../core/theme/app_colors.dart';
 import '../models/app_update_model.dart';
 
@@ -192,12 +193,15 @@ class UpdateDialog extends StatelessWidget {
                   flex: 3,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      final url = info.downloadUrl ?? info.releasePageUrl;
-                      if (url != null && onDownload != null) {
+                      final url = info.releasePageUrl ??
+                          (info.latestVersion.isNotEmpty
+                              ? 'https://github.com/${AppConstants.githubRepo}/releases/tag/v${info.latestVersion}'
+                              : 'https://github.com/${AppConstants.githubRepo}/releases');
+                      if (onDownload != null) {
                         onDownload!(url);
                       }
                     },
-                    icon: const Icon(Icons.download_rounded, size: 18, color: Colors.white),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18, color: Colors.white),
                     label: const Text(
                       'Cập nhật ngay',
                       style: TextStyle(
