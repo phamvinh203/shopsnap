@@ -9,7 +9,9 @@ import '../../providers/items_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/categories_provider.dart';
 import '../../providers/sync_provider.dart';
+import '../../providers/update_provider.dart';
 import '../../services/sync_engine.dart';
+import '../../widgets/update_dialog.dart';
 import 'widgets/budget_progress_card.dart';
 import 'widgets/category_chips_row.dart';
 import 'widgets/item_card.dart';
@@ -24,12 +26,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _filterCategory;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAppUpdateSilently();
+    });
+  }
+
+  Future<void> _checkAppUpdateSilently() async {
+    final notifier = ref.read(appUpdateProvider.notifier);
+    final info = await notifier.checkSilently();
+    if (!mounted || info == null || !info.hasUpdate) return;
+
+    UpdateDialog.show(
+      context,
+      info: info,
+      onDismiss: () => notifier.dismiss(),
+      onDownload: (url) => notifier.download(url),
+    );
+  }
+
+  Future<void> _checkAppUpdateManually() async {
+    final notifier = ref.read(appUpdateProvider.notifier);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang kiểm tra bản cập nhật mới...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    try {
+      final info = await notifier.checkManually();
+      if (!mounted) return;
+
+      if (info.hasUpdate) {
+        UpdateDialog.show(
+          context,
+          info: info,
+          onDismiss: () => notifier.dismiss(),
+          onDownload: (url) => notifier.download(url),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bạn đang dùng phiên bản mới nhất (v${info.currentVersion})!'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể kiểm tra cập nhật: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final itemsAsync    = ref.watch(itemsProvider);
     final budgetAsync   = ref.watch(budgetStatusProvider);
     final catsAsync     = ref.watch(categoriesProvider);
     final selectedDate  = ref.watch(selectedDateProvider);
     final syncState     = ref.watch(syncProvider);
+    final updateState   = ref.watch(appUpdateProvider);
+    final updateInfo    = updateState.info.valueOrNull;
 
     return Scaffold(
       body: SafeArea(
@@ -99,8 +164,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             },
                           ),
                           IconButton(
-                            icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
-                            onPressed: () {},
+                            tooltip: updateInfo?.hasUpdate == true
+                                ? 'Có bản cập nhật mới v${updateInfo!.latestVersion}'
+                                : 'Kiểm tra bản cập nhật',
+                            icon: Badge(
+                              isLabelVisible: updateInfo?.hasUpdate == true,
+                              backgroundColor: AppColors.danger,
+                              child: Icon(
+                                updateInfo?.hasUpdate == true
+                                    ? Icons.system_update_rounded
+                                    : Icons.notifications_outlined,
+                                color: updateInfo?.hasUpdate == true
+                                    ? AppColors.primary
+                                    : AppColors.textSecondary,
+                              ),
+                            ),
+                            onPressed: _checkAppUpdateManually,
                           ),
                         ],
                       ),
@@ -108,6 +187,76 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
               ),
+
+              // ── Update Banner (nếu có bản mới) ──────────────────────────
+              if (updateInfo != null && updateInfo.hasUpdate)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Material(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          UpdateDialog.show(
+                            context,
+                            info: updateInfo,
+                            onDismiss: () => ref.read(appUpdateProvider.notifier).dismiss(),
+                            onDownload: (url) => ref.read(appUpdateProvider.notifier).download(url),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(
+                            children: [
+                              const Text('🚀', style: TextStyle(fontSize: 20)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Đã có phiên bản v${updateInfo.latestVersion}!',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: AppColors.primaryDark,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                      'Nhấn để xem chi tiết và cập nhật',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Cập nhật',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
 
               // ── Budget card ──────────────────────────────────────────────
               SliverToBoxAdapter(

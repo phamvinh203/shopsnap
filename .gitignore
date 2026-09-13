@@ -48,3 +48,6 @@ app.*.map.json
 android/build/
 .dart_tool/
 build/
+
+*.apk
+

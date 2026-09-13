@@ -24,4 +24,8 @@ abstract class AppConstants {
   // Backend — chuyển sang core/network/api_config.dart (hỗ trợ --dart-define
   // SHOPSNAP_API_URL, tự chọn 10.0.2.2 trên Android emulator)
   static String get backendBaseUrl => ApiConfig.baseUrl;
+
+  // App Version & Update
+  static const appVersion = '1.0.2';
+  static const githubRepo = 'phamvinh203/shopsnap';
 }
