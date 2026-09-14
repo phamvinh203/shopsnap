@@ -146,29 +146,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-/// Header chung của màn auth — logo + tiêu đề brand + phụ đề.
+/// Header chung của màn auth — "con dấu" giỏ hàng + logo chữ Fraunces với
+/// gạch chân mực 3dp và quẹt lime sau chữ "Snap" (INK LEDGER 4.3).
 class _AuthHeader extends StatelessWidget {
   final String subtitle;
   const _AuthHeader({required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.snap;
+    final ink = colors.textPrimary;
     return Column(
       children: [
+        // Icon giỏ = stamp vuông hairline (không còn khối tint).
         Container(
           width: 72,
           height: 72,
           decoration: BoxDecoration(
-            color: context.snap.tintPrimary,
-            borderRadius: BorderRadius.circular(AppRadius.xl),
+            border: Border.all(color: colors.hairline, width: 1.2),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: Icon(Icons.shopping_cart_outlined,
-              color: context.cs.primary, size: 36),
+              color: ink.withOpacity(0.7), size: 36),
         ),
         const SizedBox(height: AppSpacing.lg),
-        Text('ShopSnap',
-            style: context.text.headlineMedium
-                ?.copyWith(fontWeight: FontWeight.w800)),
+        // Logo chữ: "Shop" mực + "Snap" quẹt lime, gạch chân mực 3dp.
+        Center(
+          child: IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Shop',
+                      style: context.text.headlineMedium
+                          ?.copyWith(color: ink),
+                    ),
+                    Container(
+                      // Quẹt bút dạ lime sau chữ "Snap".
+                      color: colors.accent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xs),
+                      child: Text(
+                        'Snap',
+                        style: context.text.headlineMedium
+                            ?.copyWith(color: colors.onAccent),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Container(height: 3, color: ink),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: AppSpacing.xs),
         Text(
           subtitle,

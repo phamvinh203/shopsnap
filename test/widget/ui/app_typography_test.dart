@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shopsnap/core/theme/app_typography.dart';
 
 void main() {
-  testWidgets('buildTextTheme: light/dark khác màu chữ, cùng hệ Nunito',
+  testWidgets('buildTextTheme: light/dark khác màu chữ, cùng hệ font (Fraunces + Be Vietnam Pro)',
       (tester) async {
     final light = AppTypography.buildTextTheme(Brightness.light);
     final dark = AppTypography.buildTextTheme(Brightness.dark);
@@ -13,9 +13,9 @@ void main() {
     // Style mới so với theme cũ: displaySmall + titleSmall.
     expect(light.displaySmall, isNotNull);
     expect(light.titleSmall, isNotNull);
-    // displayLarge cho hero "Còn lại": 34/w800.
-    expect(light.displayLarge!.fontSize, 34);
-    expect(light.displayLarge!.fontWeight, FontWeight.w800);
+    // displayLarge: Fraunces statement lớn — 32/w700 (bảng 2.4 INK LEDGER).
+    expect(light.displayLarge!.fontSize, 32);
+    expect(light.displayLarge!.fontWeight, FontWeight.w700);
   });
 
   testWidgets('moneyOf: tabular figures + size tuỳ ý', (tester) async {

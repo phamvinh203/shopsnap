@@ -106,7 +106,8 @@ class _PriceHistoryScreenState extends ConsumerState<PriceHistoryScreen> {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                // Nút quét mã — nền tint, touch target chuẩn ≥ 48dp.
+                // Nút quét mã — nền tint pine, icon onTintPrimary (token),
+                // touch target chuẩn ≥ 48dp.
                 Material(
                   color: context.snap.tintPrimary,
                   borderRadius: BorderRadius.circular(AppRadius.md),
@@ -114,10 +115,11 @@ class _PriceHistoryScreenState extends ConsumerState<PriceHistoryScreen> {
                     key: const Key('priceHistory_scanButton'),
                     onTap: _scanBarcode,
                     borderRadius: BorderRadius.circular(AppRadius.md),
-                    child: const SizedBox(
+                    child: SizedBox(
                       width: AppSizes.touchTarget,
                       height: AppSizes.touchTarget,
-                      child: Icon(Icons.qr_code_scanner, size: 24),
+                      child: Icon(Icons.qr_code_scanner,
+                          size: 24, color: context.snap.onTintPrimary),
                     ),
                   ),
                 ),
@@ -140,6 +142,8 @@ class _PriceHistoryScreenState extends ConsumerState<PriceHistoryScreen> {
                     final item = frequent[idx];
                     final isSelected = currentQuery?.name == item.itemName ||
                         (currentQuery?.barcode != null && currentQuery?.barcode == item.barcode);
+                    // Chip gợi ý — selected = lime bút dạ + chữ ink (cùng
+                    // ngôn ngữ CategoryChip; chỉ đổi màu, không đụng logic).
                     return ChoiceChip(
                       label: Text(
                         item.itemName,
@@ -147,18 +151,18 @@ class _PriceHistoryScreenState extends ConsumerState<PriceHistoryScreen> {
                           fontSize: 12,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                           color: isSelected
-                              ? context.cs.onPrimary
+                              ? context.snap.onAccent
                               : context.cs.onSurface,
                         ),
                       ),
                       selected: isSelected,
-                      selectedColor: context.cs.primary,
+                      selectedColor: context.snap.accent,
                       backgroundColor: context.cs.surfaceContainerHighest,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(AppRadius.pill)),
                       side: BorderSide(
                         color: isSelected
-                            ? context.cs.primary
+                            ? Colors.transparent
                             : context.snap.hairline,
                       ),
                       onSelected: (_) {
@@ -379,7 +383,7 @@ class _PriceHistoryScreenState extends ConsumerState<PriceHistoryScreen> {
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Icon(Icons.shopping_bag_outlined,
-                          color: context.cs.primary, size: 20),
+                          color: context.snap.onTintPrimary, size: 20),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(

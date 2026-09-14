@@ -154,7 +154,8 @@ void main() {
       expect(find.text('40%'), findsOneWidget);
 
       // Section header + chips.
-      expect(find.text('Hôm nay · 1 mặt hàng'), findsOneWidget);
+      // SectionHeader hiện overline HOA (INK LEDGER 3.11) — finder cập nhật theo chuỗi render mới.
+      expect(find.text('HÔM NAY · 1 MẶT HÀNG'), findsOneWidget);
       expect(find.byKey(const Key('categoryChipsRow_all')), findsOneWidget);
 
       // Item card theo key convention P3a.

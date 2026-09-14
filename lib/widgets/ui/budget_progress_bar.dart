@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_dimens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/currency_formatter.dart';
 
@@ -44,7 +45,8 @@ class BudgetProgressBar extends StatelessWidget {
           value: value,
           minHeight: compact ? 8 : 10,
           color: barColor,
-          backgroundColor: barColor.withOpacity(0.12),
+          // Track = hairline ĐẶC (kẻ dòng giấy) thay vì tint 12% (3.6).
+          backgroundColor: colors.hairline,
         ),
       ),
     );
@@ -100,6 +102,7 @@ class _PercentBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // % badge = con dấu vuông radius sm (6), nền tone 12%, số moneyOf 13.
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -107,11 +110,11 @@ class _PercentBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
         '$pct%',
-        style: context.text.labelLarge?.copyWith(fontSize: 13, color: color),
+        style: AppTypography.moneyOf(context.text, size: 13, color: color),
       ),
     );
   }

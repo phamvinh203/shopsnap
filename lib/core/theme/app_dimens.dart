@@ -18,14 +18,14 @@ abstract final class AppSpacing {
   static const double huge = 48;
 }
 
-/// Bo góc — map thẳng sang các giá trị đang dùng trong app (8/12/16/20/24).
+/// Bo góc — "kẻ dòng sách vở" (INK LEDGER): sắc hơn baseline cũ 8/12/16/20/24.
 abstract final class AppRadius {
-  static const double sm = 8; // chip nhỏ, badge
-  static const double md = 12; // input, quick button, dialog nhỏ
-  static const double lg = 16; // AppCard, item card, button chính
-  static const double xl = 20; // hero/budget card, sheet content
-  static const double sheet = 24; // top radius của bottom sheet
-  static const double pill = 999; // price tag, progress bar
+  static const double sm = 6; // chip nhỏ, badge, con dấu (PriceTag)
+  static const double md = 10; // input, quick button, dialog nhỏ
+  static const double lg = 14; // AppCard, item card, button chính, FAB
+  static const double xl = 16; // hero/budget card, sheet content
+  static const double sheet = 20; // top radius của bottom sheet
+  static const double pill = 999; // price tag, progress bar, nav pill
 }
 
 /// Kích thước chuẩn hoá cho control (a11y: touch target ≥ 48dp).

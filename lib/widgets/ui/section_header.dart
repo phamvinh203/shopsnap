@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import 'money_text.dart';
 
-/// Header section — thay Row "Hôm nay · N items | 123.000đ" copy-paste.
+/// Header section — "số là nhân vật": title = overline HOA 11/w700 ls 1.2,
+/// amount = moneyOf 14 mực. Thay Row "Hôm nay · N items | 123.000đ" copy-paste.
 ///
-/// Truyền hoặc [trailing] (widget tuỳ ý) hoặc [amount] (int → MoneyText màu
-/// brand, tabular figures).
+/// Truyền hoặc [trailing] (widget tuỳ ý) hoặc [amount] (int → MoneyText mực,
+/// tabular figures).
 class SectionHeader extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -27,9 +29,13 @@ class SectionHeader extends StatelessWidget {
       children: [
         Flexible(
           child: Text(
-            title,
+            // Overline hiện HOA theo spec (caller truyền dạng tự nhiên).
+            title.toUpperCase(),
             key: const Key('sectionHeader_title'),
-            style: context.text.titleSmall,
+            style: AppTypography.overlineOf(
+              context.text,
+              color: context.cs.onSurfaceVariant,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -40,7 +46,7 @@ class SectionHeader extends StatelessWidget {
             key: const Key('sectionHeader_amount'),
             amount: amount!,
             colored: true,
-            style: TextStyle(fontSize: 14, color: context.cs.primary),
+            style: const TextStyle(fontSize: 14),
           ),
       ],
     );

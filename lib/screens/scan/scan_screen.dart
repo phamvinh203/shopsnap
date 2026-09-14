@@ -108,14 +108,24 @@ class _ScanScreenState extends State<ScanScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md - 2),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  // Chip hướng dẫn = nền ink @60% (4.6); scan screen luôn
+                  // nằm trên camera nên giữ đen/bạchkim, không theo theme.
+                  color: Colors.black.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: Border.all(color: Colors.white30),
                 ),
                 child: const Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.keyboard_outlined, color: Colors.white70, size: 16),
                   SizedBox(width: AppSpacing.xs + 2),
-                  Text('Nhập mã thủ công', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  Text(
+                    'Nhập mã thủ công',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.white,
+                      decorationThickness: 1.5,
+                    ),
+                  ),
                 ]),
               ),
             ),

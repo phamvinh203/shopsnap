@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shopsnap/core/theme/app_dimens.dart';
+import 'package:shopsnap/core/theme/app_typography.dart';
 import 'package:shopsnap/core/theme/snap_colors.dart';
 import 'package:shopsnap/services/ocr_service.dart';
 
@@ -46,31 +47,27 @@ class _OcrResultListState extends State<OcrResultList> {
         onUpdate: (item) => _update(i, item),
         onRemove: () => _remove(i),
       )),
-      // Add row button — InkWell thay GestureDetector trần (ripple + semantics),
-      // touch target ≥ 48dp.
+      // Add row button — "khối mực" radius 6 (4.6): giữ cấu trúc
+      // Material/InkWell/Container/Text + key mà test khoá.
       Padding(
         // Margin ngoài InkWell để ripple không tràn vào khoảng cách.
         padding: const EdgeInsets.only(top: AppSpacing.xs),
         child: Material(
-          color: context.cs.surface,
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          color: context.cs.onSurface,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           child: InkWell(
             key: const Key('ocrResultList_addButton'),
             onTap: _add,
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-              decoration: BoxDecoration(
-                border: Border.all(color: context.snap.hairline),
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.add, size: 16, color: context.cs.primary),
+                Icon(Icons.add, size: 16, color: context.cs.surface),
                 const SizedBox(width: AppSpacing.xs),
                 // Glossary R14: "Thêm mặt hàng" thay "Thêm item".
                 Text('Thêm mặt hàng',
                     style: context.text.labelLarge
-                        ?.copyWith(color: context.cs.primary, fontSize: 13)),
+                        ?.copyWith(color: context.cs.surface, fontSize: 13)),
               ]),
             ),
           ),
@@ -109,21 +106,28 @@ class _ItemRowState extends State<_ItemRow> {
   Widget build(BuildContext context) {
     final colors = context.snap;
     final needsReview = widget.item.needsReview;
-    // Giữ cấu trúc Container + Text (ocr_result_list_test phụ thuộc);
-    // màu chuyển sang token: warning tint khi needsReview, surface + hairline
-    // khi thường.
+    // "Rows kẻ dòng" (4.6): row thường = đường kẻ hairline DƯỚI (như sổ),
+    // không còn hộp bo; row cần soát lại giữ cơ chế warning tint + viền.
+    // Cấu trúc Container + Text giữ nguyên (ocr_result_list_test phụ thuộc).
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.md),
+      margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: needsReview ? colors.warning.withOpacity(0.06) : context.cs.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: needsReview ? colors.warning.withOpacity(0.4) : colors.hairline,
+        color: needsReview ? colors.warning.withOpacity(0.06) : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border(
+          bottom: BorderSide(
+            color: needsReview
+                ? colors.warning.withOpacity(0.4)
+                : colors.hairline,
+          ),
         ),
       ),
       child: Row(children: [
-        // Index badge
+        // Index badge — số Space Grotesk (moneyOf)
         Container(
           width: 24, height: 24,
           alignment: Alignment.center,
@@ -131,11 +135,16 @@ class _ItemRowState extends State<_ItemRow> {
             color: needsReview
                 ? colors.warning.withOpacity(0.2)
                 : colors.tintPrimary,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: Text('${widget.index + 1}',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: needsReview ? colors.warning : context.cs.primary)),
+          child: Text(
+            '${widget.index + 1}',
+            style: AppTypography.moneyOf(
+              context.text,
+              size: 11,
+              color: needsReview ? colors.warning : colors.onTintPrimary,
+            ),
+          ),
         ),
         const SizedBox(width: AppSpacing.md - 2),
         // Name field
@@ -146,24 +155,24 @@ class _ItemRowState extends State<_ItemRow> {
             style: const TextStyle(fontSize: 13),
             decoration: const InputDecoration(
               isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs + 2),
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(AppRadius.sm))),
+              border: UnderlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(2))),
               hintText: 'Tên sản phẩm',
             ),
             onChanged: (v) => widget.onUpdate(widget.item.copyWith(name: v)),
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
-        // Price field
+        // Price field — số Space Grotesk
         Expanded(
           flex: 2,
           child: TextField(
             controller: _priceCtrl,
-            style: const TextStyle(fontSize: 13),
+            style: AppTypography.moneyOf(context.text, size: 13),
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: const InputDecoration(
               isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs + 2),
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(AppRadius.sm))),
+              border: UnderlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(2))),
               hintText: 'Giá',
               suffixText: 'đ',
             ),

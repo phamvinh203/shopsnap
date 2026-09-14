@@ -82,7 +82,8 @@ class ItemCard extends StatelessWidget {
             boxShadow: dark ? AppShadows.cardDark : AppShadows.card,
           ),
           child: Row(children: [
-            // Thumbnail
+            // Thumbnail — placeholder: viền hairline + icon mực @40%
+            // (không còn khối tint tím; icon giữ `shopping_bag_outlined`).
             ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.md),
               child: item.imagePath != null
@@ -95,10 +96,13 @@ class ItemCard extends StatelessWidget {
                   : Container(
                       width: 56,
                       height: 56,
-                      color: colors.tintPrimary,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.hairline),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
                       child: Icon(
                         Icons.shopping_bag_outlined,
-                        color: context.cs.primary,
+                        color: colors.textPrimary.withOpacity(0.4),
                         size: 28,
                       ),
                     ),

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_dimens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
@@ -351,21 +352,57 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
 
             const SizedBox(height: AppSpacing.lg),
 
-            // ── Giá tiền ──────────────────────────────────────────────
-            AppTextField(
-              key: const Key('addItem_priceField'),
-              controller:  _priceCtrl,
-              label:       'Giá tiền (đ)',
-              hint:        '0',
-              prefixIcon:  Icons.attach_money,
-              suffix:      const Text('đ'),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Vui lòng nhập giá';
-                if (int.tryParse(v) == null) return 'Giá không hợp lệ';
-                return null;
-              },
+            // ── Giá tiền — "sân khấu chính" cho bàn phím số (4.5): khối
+            // surfaceVariant radius 10, số moneyOf 32 w700 canh phải.
+            // (Key addItem_priceField giữ nguyên; validator giữ nguyên.)
+            Text(
+              'Giá tiền (đ)'.toUpperCase(),
+              style: AppTypography.overlineOf(
+                context.text,
+                color: context.cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: context.cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: TextFormField(
+                key: const Key('addItem_priceField'),
+                controller: _priceCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                textAlign: TextAlign.right,
+                style: AppTypography.moneyOf(context.text, size: 32)
+                    .copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: context.cs.onSurface),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '0',
+                  hintStyle: AppTypography.moneyOf(context.text, size: 32)
+                      .copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: context.cs.onSurfaceVariant
+                              .withOpacity(0.5)),
+                  suffixText: 'đ',
+                  suffixStyle: AppTypography.moneyOf(
+                    context.text,
+                    size: 14,
+                    color: context.cs.onSurfaceVariant,
+                  ),
+                ),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Vui lòng nhập giá';
+                  if (int.tryParse(v) == null) return 'Giá không hợp lệ';
+                  return null;
+                },
+              ),
             ),
 
             // Price comparison hint (chỉ hiện khi giá > 0 — xem component)
@@ -427,8 +464,9 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   }
 }
 
-/// Nút quick action (Quét mã / Chụp hóa đơn / Nhãn giá AR) — Material+InkWell
-/// có ripple + semantics (I5), style từ tokens (không còn GestureDetector trần).
+/// Nút quick action (Quét mã / Chụp hóa đơn / Nhãn giá AR) — "ruled tile":
+/// nền giấy + hairline border, icon + label 12/w600 (4.5), Material+InkWell
+/// có ripple + semantics (I5).
 class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String   label;
@@ -447,29 +485,35 @@ class _QuickAction extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
-      child: Material(
-        color: colors.tintPrimary,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: colors.onTintPrimary, size: 22),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  label,
-                  style: context.text.labelSmall?.copyWith(
-                    color: colors.onTintPrimary,
-                    fontWeight: FontWeight.w600,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.hairline),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Material(
+          color: context.cs.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: colors.textPrimary, size: 22),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    label,
+                    style: context.text.labelSmall?.copyWith(
+                      color: colors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

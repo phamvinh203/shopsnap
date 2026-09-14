@@ -8,13 +8,14 @@ import '../../../core/theme/snap_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../widgets/ui/money_text.dart';
 
-/// Hero card của Home theo hướng "Friendly Ledger" (memo redesign 02):
-/// DUY NHẤT 1 card gradient tím radius 20 mỗi màn — hero number "Còn lại"
-/// 34sp/w800 tabular figures + progress tổng quan.
+/// Hero card của Home theo "INK LEDGER" — **thỏi mực** (3.6):
+/// light = khối mực đen #1C1B17 in trên giấy (KHÔNG gradient, KHÔNG glow);
+/// dark = #0E120D (đen hơn surface) + hairline border — "mực trên bảng đen".
+/// Số "Còn lại" 34sp kem + badge % LIME (điểm nhấn highlighter duy nhất).
 ///
 /// Contract giữ nguyên với `budget_progress_card_test.dart`:
 /// - render `LinearProgressIndicator` với màu semantic theo ngưỡng
-///   80% / 100% (màu map qua `context.snap` — cùng hex `AppColors`);
+///   80% / 100% (màu map qua `context.snap`);
 /// - chuỗi "Chưa đặt ngân sách" / "Đã dùng: ..." / "Còn lại: ..." / "%".
 class BudgetProgressCard extends StatelessWidget {
   final int spent;
@@ -29,18 +30,18 @@ class BudgetProgressCard extends StatelessWidget {
 
   /// Hero number: "Còn lại: 60.000đ" ở 34sp/w800 tabular figures.
   /// Chưa đặt ngân sách → hiển thị text thay cho số.
-  Widget _heroNumber(BuildContext context) {
+  Widget _heroNumber(BuildContext context, Color cream) {
     if (total <= 0) {
       return Text(
         'Chưa đặt ngân sách',
         key: const Key('budgetProgressCard_remaining'),
-        style: context.text.titleMedium?.copyWith(color: Colors.white),
+        style: context.text.titleMedium?.copyWith(color: cream),
       );
     }
     return Text(
       'Còn lại: ${CurrencyFormatter.format(_remaining)}',
       key: const Key('budgetProgressCard_remaining'),
-      style: AppTypography.moneyOf(context.text, size: 34, color: Colors.white)
+      style: AppTypography.moneyOf(context.text, size: 34, color: cream)
           .copyWith(fontWeight: FontWeight.w800),
     );
   }
@@ -51,17 +52,22 @@ class BudgetProgressCard extends StatelessWidget {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final barColor = colors.colorFor(budgetLevelFromRatio(_rawRatio));
 
+    // Bảng 3.6: hero luôn là khối TỐI trên cả 2 mode (thỏi mực / bảng đen).
+    // #0E120D là hex proposal ghi rõ (3.6) — không có token tương ứng.
+    const Color heroBgDark = Color(0xFF0E120D);
+    final Color heroBg = dark ? heroBgDark : AppColors.textPrimary;
+    // "Kem" chữ trên thỏi mực — token giấy kem của brand.
+    const Color cream = AppColors.bgMain;
+    final Color creamDim = cream.withOpacity(0.7);
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primary, AppColors.primaryDark],
-        ),
+        color: heroBg,
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        // Dark mode bỏ glow, dùng shadow đậm hơn (memo 1.3).
-        boxShadow: dark ? AppShadows.cardDark : AppShadows.glowPrimary,
+        // Dark phân tách bằng hairline border; không shadow (print flat).
+        border: dark ? Border.all(color: colors.hairline) : null,
+        boxShadow: dark ? AppShadows.cardDark : AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,9 +76,10 @@ class BudgetProgressCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Ngân sách hôm nay',
-                style: context.text.titleSmall?.copyWith(color: Colors.white70),
+                'Ngân sách hôm nay'.toUpperCase(),
+                style: AppTypography.overlineOf(context.text, color: creamDim),
               ),
+              // Badge % = nền LIME, chữ ink — highlighter duy nhất của màn.
               Container(
                 key: const Key('budgetProgressCard_percent'),
                 padding: const EdgeInsets.symmetric(
@@ -80,22 +87,42 @@ class BudgetProgressCard extends StatelessWidget {
                   vertical: AppSpacing.xs,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  color: colors.accent,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Text(
                   '$_pct%',
-                  style: context.text.labelLarge?.copyWith(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                  style: AppTypography.moneyOf(
+                    context.text,
+                    size: 13,
+                    color: colors.onAccent,
+                  ).copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          _heroNumber(context),
+          // Số tiền đổi (sửa/xoá item) → fade + slide-up ~4dp, 200ms (2.7);
+          // a11y tắt animation → render thẳng số mới.
+          if (MediaQuery.disableAnimationsOf(context))
+            _heroNumber(context, cream)
+          else
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: animation.drive(
+                    Tween(begin: const Offset(0, 0.12), end: Offset.zero),
+                  ),
+                  child: child,
+                ),
+              ),
+              child: KeyedSubtree(
+                key: ValueKey('$total-$spent'),
+                child: _heroNumber(context, cream),
+              ),
+            ),
           const SizedBox(height: AppSpacing.lg),
           ClipRRect(
             borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -108,7 +135,9 @@ class BudgetProgressCard extends StatelessWidget {
                 value: value,
                 minHeight: 10,
                 color: barColor,
-                backgroundColor: barColor.withOpacity(0.12),
+                // Track kem @18% (light) / hairline (dark) — bảng 3.6.
+                backgroundColor:
+                    dark ? colors.hairline : cream.withOpacity(0.18),
               ),
             ),
           ),
@@ -117,12 +146,12 @@ class BudgetProgressCard extends StatelessWidget {
             children: [
               Text(
                 'Đã dùng:',
-                style: context.text.bodySmall?.copyWith(color: Colors.white70),
+                style: context.text.bodySmall?.copyWith(color: creamDim),
               ),
               const SizedBox(width: AppSpacing.xs),
               MoneyText(
                 amount: spent,
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                style: TextStyle(fontSize: 12, color: creamDim),
               ),
             ],
           ),

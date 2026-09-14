@@ -28,11 +28,19 @@ BudgetLevel budgetLevelFromRatio(double ratio) {
 
 @immutable
 class SnapColors extends ThemeExtension<SnapColors> {
-  /// Container tint của brand tím (light #EEF0FF / dark #26244A).
+  /// Container tint của brand pine (light #DDEBE3 / dark #1E3A2D).
   final Color tintPrimary;
 
   /// Chữ/icon trên nền tintPrimary.
   final Color onTintPrimary;
+
+  /// Bút dạ lime (highlighter) — selected/badge nhấn.
+  /// Light #CDF163 / dark #C7EE5E. (Field mới — UI refresh "INK LEDGER".)
+  final Color accent;
+
+  /// Chữ/icon trên nền accent (ink trên lime).
+  /// Light #1C1B17 / dark #161A12. (Field mới — UI refresh "INK LEDGER".)
+  final Color onAccent;
 
   final Color success;
 
@@ -42,23 +50,25 @@ class SnapColors extends ThemeExtension<SnapColors> {
   final Color warning;
   final Color danger;
 
-  /// Border hairline thay elevation (light #E5E7EB / dark #2A2A3A).
+  /// Border hairline thay elevation (light #DDD6C6 / dark #343B2F).
   final Color hairline;
 
   /// Màu nền shimmer/loading skeleton.
   final Color skeleton;
 
-  /// Màu chữ chính trên surface — Phase 4 (dark mode), bảng memo redesign:
-  /// light #1A1A2E / dark #F2F2F7. Map từ `AppTypography.onSurface*` để chỉ
+  /// Màu chữ chính trên surface (mực đen ấm / phấn kem):
+  /// light #1C1B17 / dark #F2EFE3. Map từ `AppTypography.onSurface*` để chỉ
   /// có MỘT nguồn sự thật cho giá trị hex.
   final Color textPrimary;
 
-  /// Màu chữ phụ — light #6B7280 / dark #A5ADBB.
+  /// Màu chữ phụ — light #6E6A5E / dark #A8A496.
   final Color textSecondary;
 
   const SnapColors({
     required this.tintPrimary,
     required this.onTintPrimary,
+    required this.accent,
+    required this.onAccent,
     required this.success,
     required this.successDim,
     required this.warning,
@@ -70,27 +80,31 @@ class SnapColors extends ThemeExtension<SnapColors> {
   });
 
   static const SnapColors light = SnapColors(
-    tintPrimary: Color(0xFFEEF0FF),
-    onTintPrimary: Color(0xFF4B44CC),
-    success: Color(0xFF00C48C),
-    successDim: Color(0x1F00C48C),
-    warning: Color(0xFFFFAB2D),
-    danger: Color(0xFFFF4D4D),
-    hairline: Color(0xFFE5E7EB),
-    skeleton: Color(0xFFE5E7EB),
+    tintPrimary: Color(0xFFDDEBE3),
+    onTintPrimary: Color(0xFF0E4635),
+    accent: Color(0xFFCDF163),
+    onAccent: Color(0xFF1C1B17),
+    success: Color(0xFF1E8E5A),
+    successDim: Color(0x1F1E8E5A),
+    warning: Color(0xFFC2801A),
+    danger: Color(0xFFC0402E),
+    hairline: Color(0xFFDDD6C6),
+    skeleton: Color(0xFFE7E1D2),
     textPrimary: AppTypography.onSurfaceLight,
     textSecondary: AppTypography.onSurfaceVariantLight,
   );
 
   static const SnapColors dark = SnapColors(
-    tintPrimary: Color(0xFF26244A),
-    onTintPrimary: Color(0xFF8B85FF),
-    success: Color(0xFF2ADBA5),
-    successDim: Color(0x1F2ADBA5),
-    warning: Color(0xFFFFBC55),
-    danger: Color(0xFFFF6B6B),
-    hairline: Color(0xFF2A2A3A),
-    skeleton: Color(0xFF2A2A3A),
+    tintPrimary: Color(0xFF1E3A2D),
+    onTintPrimary: Color(0xFF8FE3BE),
+    accent: Color(0xFFC7EE5E),
+    onAccent: Color(0xFF161A12),
+    success: Color(0xFF4CC98B),
+    successDim: Color(0x1F4CC98B),
+    warning: Color(0xFFE0A33E),
+    danger: Color(0xFFE86A57),
+    hairline: Color(0xFF343B2F),
+    skeleton: Color(0xFF2A3126),
     textPrimary: AppTypography.onSurfaceDark,
     textSecondary: AppTypography.onSurfaceVariantDark,
   );
@@ -111,6 +125,8 @@ class SnapColors extends ThemeExtension<SnapColors> {
   SnapColors copyWith({
     Color? tintPrimary,
     Color? onTintPrimary,
+    Color? accent,
+    Color? onAccent,
     Color? success,
     Color? successDim,
     Color? warning,
@@ -123,6 +139,8 @@ class SnapColors extends ThemeExtension<SnapColors> {
     return SnapColors(
       tintPrimary: tintPrimary ?? this.tintPrimary,
       onTintPrimary: onTintPrimary ?? this.onTintPrimary,
+      accent: accent ?? this.accent,
+      onAccent: onAccent ?? this.onAccent,
       success: success ?? this.success,
       successDim: successDim ?? this.successDim,
       warning: warning ?? this.warning,
@@ -140,6 +158,8 @@ class SnapColors extends ThemeExtension<SnapColors> {
     return SnapColors(
       tintPrimary: Color.lerp(tintPrimary, other.tintPrimary, t)!,
       onTintPrimary: Color.lerp(onTintPrimary, other.onTintPrimary, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       success: Color.lerp(success, other.success, t)!,
       successDim: Color.lerp(successDim, other.successDim, t)!,
       warning: Color.lerp(warning, other.warning, t)!,

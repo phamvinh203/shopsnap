@@ -26,9 +26,17 @@ class AppBottomSheet {
       builder: (sheetContext) => Padding(
         padding:
             EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
-        child: Column(
+        // Clip để top rule hairline chạy theo góc bo của sheet ("kẻ dòng thay
+        // bóng đổ" — INK LEDGER 3.10).
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Top rule hairline thay shadow.
+            Container(height: 1, color: colors.hairline),
             Container(
               key: const Key('appBottomSheet_handle'),
               width: 40,
@@ -38,7 +46,8 @@ class AppBottomSheet {
                 bottom: AppSpacing.sm,
               ),
               decoration: BoxDecoration(
-                color: colors.hairline,
+                // Handle = mực @20% thay hairline.
+                color: context.cs.onSurface.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
             ),
@@ -68,6 +77,7 @@ class AppBottomSheet {
               ),
             ),
           ],
+          ),
         ),
       ),
     );

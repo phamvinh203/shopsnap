@@ -252,13 +252,10 @@ class _PeriodTabs extends StatelessWidget {
             selected:          {period},
             showSelectedIcon:  false,
             onSelectionChanged: (s) => onSelected(s.first),
-            style: ButtonStyle(
-              visualDensity: const VisualDensity(horizontal: -3, vertical: -2),
-              textStyle: WidgetStatePropertyAll(
-                context.text.labelSmall?.copyWith(
-                  fontSize: 12, fontWeight: FontWeight.w600,
-                ),
-              ),
+            // Style selected lime/ink lấy từ segmentedButtonTheme (3.10) —
+            // local chỉ giữ visualDensity.
+            style: const ButtonStyle(
+              visualDensity: VisualDensity(horizontal: -3, vertical: -2),
             ),
             segments: const [
               ButtonSegment(value: 'day',   label: Text('Ngày')),
@@ -296,9 +293,12 @@ class _DateNavBar extends StatelessWidget {
               onTap: onPick,
               child: Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Date nav = overline (HOA) theo 4.4.
                   Text(
-                    isToday ? 'Hôm nay' : DateHelper.formatDate(date),
-                    style: context.text.titleSmall,
+                    (isToday ? 'Hôm nay' : DateHelper.formatDate(date))
+                        .toUpperCase(),
+                    style: AppTypography.overlineOf(context.text,
+                        color: context.snap.textPrimary),
                   ),
                   if (!isToday)
                     Text(
@@ -342,75 +342,81 @@ class _SummaryBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SliverList(
         delegate: SliverChildListDelegate([
-          // ── Hero total card (duy nhất 1 gradient mỗi màn) ───────────────
-          Container(
-            key: const Key('summaryScreen_heroCard'),
-            margin:  const EdgeInsets.fromLTRB(
-                AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primary, AppColors.primaryDark],
-                begin:  Alignment.topLeft,
-                end:    Alignment.bottomRight,
+          // ── Hero total card — "thỏi mực / bảng đen" (INK LEDGER 4.4) ─────
+          Builder(builder: (context) {
+            final dark = Theme.of(context).brightness == Brightness.dark;
+            final colors = context.snap;
+            // Hero luôn khối TỐI trên cả 2 mode — cùng ngôn ngữ hero Home.
+            // #0E120D là hex proposal ghi rõ (3.6/4.4) — không có token.
+            const Color heroBgDark = Color(0xFF0E120D);
+            final Color heroBg =
+                dark ? heroBgDark : AppColors.textPrimary;
+            const Color cream = AppColors.bgMain;
+            final Color creamDim = cream.withOpacity(0.7);
+            return Container(
+              key: const Key('summaryScreen_heroCard'),
+              margin:  const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              decoration: BoxDecoration(
+                color: heroBg,
+                borderRadius: BorderRadius.circular(AppRadius.xl),
+                border: dark ? Border.all(color: colors.hairline) : null,
+                boxShadow: dark ? AppShadows.cardDark : AppShadows.card,
               ),
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-              boxShadow: Theme.of(context).brightness == Brightness.dark
-                  ? AppShadows.cardDark
-                  : AppShadows.glowPrimary,
-            ),
-            child: Row(children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  shape: BoxShape.circle,
+              child: Row(children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: cream.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.account_balance_wallet_outlined,
+                      color: cream, size: 28),
                 ),
-                child: const Icon(Icons.account_balance_wallet_outlined,
-                    color: Colors.white, size: 28),
-              ),
-              const SizedBox(width: AppSpacing.md + 2),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Tổng chi tiêu',
+                const SizedBox(width: AppSpacing.md + 2),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Tổng chi tiêu'.toUpperCase(),
+                        style: AppTypography.overlineOf(context.text,
+                            color: creamDim)),
+                    // Hero number 28sp/w800 tabular figures — số kem trên mực.
+                    MoneyText(
+                      key: const Key('summaryScreen_heroTotal'),
+                      amount: summary.totalSpent,
+                      style: AppTypography.moneyOf(context.text,
+                              size: 28, color: cream)
+                          .copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      '${summary.itemCount} vật phẩm',
                       style: context.text.bodySmall
-                          ?.copyWith(color: Colors.white70)),
-                  // Hero number 28sp/w800 tabular figures (memo mục 1.3).
-                  MoneyText(
-                    key: const Key('summaryScreen_heroTotal'),
-                    amount: summary.totalSpent,
-                    style: AppTypography.moneyOf(context.text,
-                            size: 28, color: Colors.white)
-                        .copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    '${summary.itemCount} vật phẩm',
-                    style: context.text.bodySmall
-                        ?.copyWith(color: Colors.white60),
-                  ),
-                  // So sánh với kỳ liền trước — chỉ có khi lấy được từ server
-                  if (comparison != null) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    Row(children: [
-                      Icon(_trendIcon(comparison!.trend),
-                          color: Colors.white70, size: 14),
-                      const SizedBox(width: AppSpacing.xs),
-                      Flexible(
-                        child: Text(
-                          _trendText(comparison!),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.text.bodySmall
-                              ?.copyWith(color: Colors.white70),
+                          ?.copyWith(color: cream.withOpacity(0.6)),
+                    ),
+                    // So sánh với kỳ liền trước — chỉ có khi lấy được từ server
+                    if (comparison != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Row(children: [
+                        Icon(_trendIcon(comparison!.trend),
+                            color: creamDim, size: 14),
+                        const SizedBox(width: AppSpacing.xs),
+                        Flexible(
+                          child: Text(
+                            _trendText(comparison!),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.bodySmall
+                                ?.copyWith(color: creamDim),
+                          ),
                         ),
-                      ),
-                    ]),
-                  ],
-                ]),
-              ),
-            ]),
-          ),
+                      ]),
+                    ],
+                  ]),
+                ),
+              ]),
+            );
+          }),
 
           // ── AI Smart Shopping Assistant Card ────────────────────────────
           if (aiAssistant != null)
@@ -557,9 +563,21 @@ class _Legend extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
-              '${cat.categoryIcon} ${cat.categoryName}  ${CurrencyFormatter.formatShort(cat.totalSpent)}',
+              '${cat.categoryIcon} ${cat.categoryName}',
               style: (context.text.bodySmall ?? const TextStyle()).copyWith(
                 fontWeight: i == touchedIndex ? FontWeight.w700 : FontWeight.w400,
+                color: i == touchedIndex
+                    ? context.cs.onSurface
+                    : context.cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            // Tiền trong legend qua moneyOf — số là nhân vật (4.4).
+            Text(
+              CurrencyFormatter.formatShort(cat.totalSpent),
+              style: AppTypography.moneyOf(
+                context.text,
+                size: 12,
                 color: i == touchedIndex
                     ? context.cs.onSurface
                     : context.cs.onSurfaceVariant,
@@ -593,13 +611,14 @@ class _InsightsSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
                 child: Row(children: [
+                  // Icon severity = con dấu nhỏ: nền tone 12% radius 6 (4.4).
                   Container(
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
                       color: _severityColor(context, insight.severity)
                           .withOpacity(0.12),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Icon(_typeIcon(insight.type),
                         color: _severityColor(context, insight.severity),

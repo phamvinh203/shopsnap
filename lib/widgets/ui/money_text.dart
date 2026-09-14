@@ -7,7 +7,8 @@ import '../../core/utils/currency_formatter.dart';
 /// Text hiển thị số tiền — LUÔN dùng tabular figures để danh sách giá thẳng cột.
 ///
 /// Format tiền đi qua [CurrencyFormatter] (nguồn sự thật duy nhất: `25.000đ`).
-/// [colored] = tô màu brand primary (dùng cho tổng/trong section header).
+/// [colored] = tô màu MỰC (cs.onSurface) thay vì primary — tổng tiền là mực
+/// đậm, không tô màu (INK LEDGER 3.11: tránh success/primary lẫn lộn).
 class MoneyText extends StatelessWidget {
   final int amount;
 
@@ -26,7 +27,7 @@ class MoneyText extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = AppTypography.moneyOf(
       context.text,
-      color: colored ? context.cs.primary : null,
+      color: colored ? context.cs.onSurface : null,
     );
     return Text(
       CurrencyFormatter.format(amount),

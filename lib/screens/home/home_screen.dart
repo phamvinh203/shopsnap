@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_dimens.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/date_helper.dart';
@@ -120,8 +121,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('Xin chào! 👋', style: context.text.headlineMedium),
                         const SizedBox(height: 2),
-                        Text(DateHelper.formatDate(selectedDate),
-                            style: context.text.bodySmall),
+                        // Ngày = overline nhỏ (HOA, ls 1.2) — bảng 4.1.
+                        Text(DateHelper.formatDate(selectedDate).toUpperCase(),
+                            style: AppTypography.overlineOf(
+                              context.text,
+                              color: context.cs.onSurfaceVariant,
+                            )),
                       ]),
                       Row(
                         children: [

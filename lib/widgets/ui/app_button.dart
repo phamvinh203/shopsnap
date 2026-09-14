@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_dimens.dart';
 import '../../core/theme/snap_colors.dart';
 
-/// Nút hành động chính — nền tím brand, chữ trắng.
+/// Nút hành động chính — "mực in": nền mực (light #1C1B17 / dark kem, in
+/// ngược), chữ màu đối ứng, radius md (10), cao 52.
 ///
 /// Khi [loading]: thay label bằng spinner và disable nút.
 class PrimaryButton extends StatelessWidget {
@@ -27,10 +28,14 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nền = mực (cs.onSurface); chữ/spinner = đối ứng (giấy — cs.surface):
+    // light kem trên ink, dark ink trên kem — đúng chất "in ngược".
     return FilledButton(
       key: const Key('primaryButton'),
       onPressed: loading ? null : onPressed,
       style: FilledButton.styleFrom(
+        backgroundColor: context.cs.onSurface,
+        foregroundColor: context.cs.surface,
         minimumSize: expand
             ? const Size.fromHeight(AppSizes.buttonHeight)
             : const Size(AppSizes.touchTarget, AppSizes.buttonHeight),
@@ -43,7 +48,7 @@ class PrimaryButton extends StatelessWidget {
               height: 22,
               child: CircularProgressIndicator(
                 strokeWidth: 2.4,
-                color: context.cs.onPrimary,
+                color: context.cs.surface,
               ),
             )
           : Row(
@@ -60,7 +65,8 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
-/// Nút phụ — nền tint primary, chữ primary (hoặc tint danger khi [danger]).
+/// Nút phụ — "quét bút dạ": nền lime [SnapColors.accent], chữ ink
+/// [SnapColors.onAccent]. Variant [danger]: bg danger @12%, chữ danger.
 class SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -81,9 +87,8 @@ class SecondaryButton extends StatelessWidget {
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         backgroundColor:
-            danger ? colors.danger.withOpacity(0.12) : colors.tintPrimary,
-        foregroundColor:
-            danger ? colors.danger : colors.onTintPrimary,
+            danger ? colors.danger.withOpacity(0.12) : colors.accent,
+        foregroundColor: danger ? colors.danger : colors.onAccent,
         elevation: 0,
         minimumSize: const Size.fromHeight(AppSizes.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -93,7 +98,8 @@ class SecondaryButton extends StatelessWidget {
   }
 }
 
-/// Nút chữ — cho action phụ ("Huỷ", "Để sau"…), không nền.
+/// Nút chữ — action phụ ("Huỷ", "Để sau"…), không nền, CHỮ GẠCH CHÂN
+/// (chất editorial editorial của Ink Ledger).
 class GhostButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -106,10 +112,23 @@ class GhostButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = context.snap.textPrimary;
     return TextButton(
       key: const Key('ghostButton'),
       onPressed: onPressed,
-      child: Text(label),
+      style: TextButton.styleFrom(foregroundColor: ink),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: ink,
+          decoration: TextDecoration.underline,
+          decorationColor: ink,
+          decorationStyle: TextDecorationStyle.solid,
+          // Flutter TextStyle không có "offset" cho gạch chân (khác CSS) —
+          // chỉ kiểm soát được độ dày tương đối.
+          decorationThickness: 1.5,
+        ),
+      ),
     );
   }
 }

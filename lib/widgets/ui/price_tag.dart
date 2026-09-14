@@ -8,7 +8,9 @@ import '../../core/utils/currency_formatter.dart';
 /// Tone ngữ nghĩa của price tag — map sang màu ở MỘT chỗ (dưới đây).
 enum PriceTone { primary, success, danger }
 
-/// Pill price tag thay Container pill copy-paste trong ItemCard.
+/// "Con dấu" (stamp) price tag thay pill: radius vuông [AppRadius.sm],
+/// border tone 1.2 + nền tone @8%. Giá mặc định là MỰC ĐEN (không còn
+/// tô primary — tránh xung đột thị giác với success xanh).
 class PriceTag extends StatelessWidget {
   final int amount;
   final PriceTone tone;
@@ -23,7 +25,8 @@ class PriceTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.snap;
     final Color base = switch (tone) {
-      PriceTone.primary => context.cs.primary,
+      // Giá = mực đen (textPrimary), không phải cs.primary (bảng 3.5).
+      PriceTone.primary => colors.textPrimary,
       PriceTone.success => colors.success,
       PriceTone.danger => colors.danger,
     };
@@ -34,8 +37,9 @@ class PriceTag extends StatelessWidget {
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: base.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
+        color: base.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: base, width: 1.2),
       ),
       child: Text(
         CurrencyFormatter.format(amount),

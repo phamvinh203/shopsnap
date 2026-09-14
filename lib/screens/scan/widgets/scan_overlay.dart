@@ -34,7 +34,9 @@ class _ScanOverlayState extends State<ScanOverlay> with SingleTickerProviderStat
     // overlay nằm TRÊN camera nên nền đen dim giữ nguyên (chức năng, không
     // phải surface theo theme).
     final colors = context.snap;
-    final activeColor = widget.isSuccess ? colors.success : context.cs.primary;
+    // 4 góc bracket = LIME (bút dạ) 2dp khi đang quét; flash success giữ
+    // màu semantic (4.6).
+    final activeColor = widget.isSuccess ? colors.success : colors.accent;
 
     return LayoutBuilder(builder: (context, constraints) {
       final w = constraints.maxWidth;
@@ -162,7 +164,7 @@ class _CornerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 3.5
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 

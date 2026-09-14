@@ -201,45 +201,52 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return SliverList(
       delegate: SliverChildListDelegate([
-        // ── Monthly total (hero card gradient duy nhất của màn) ──────────
-        Container(
-          margin:  const EdgeInsets.fromLTRB(
-              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryDark],
+        // ── Monthly total — "thỏi mực" (đồng bộ ngôn ngữ hero summary):
+        // light nền mực #1C1B17, dark #0E120D + hairline; KHÔNG gradient/glow.
+        Builder(builder: (context) {
+          final dark = Theme.of(context).brightness == Brightness.dark;
+          final colors = context.snap;
+          // #0E120D là hex proposal ghi rõ (3.6) cho hero dark — không có token.
+          const Color heroBgDark = Color(0xFF0E120D);
+          final Color heroBg = dark ? heroBgDark : AppColors.textPrimary;
+          const Color cream = AppColors.bgMain;
+          final Color creamDim = cream.withOpacity(0.7);
+          return Container(
+            margin:  const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: heroBg,
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              border: dark ? Border.all(color: colors.hairline) : null,
+              boxShadow: dark ? AppShadows.cardDark : AppShadows.card,
             ),
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            boxShadow: Theme.of(context).brightness == Brightness.dark
-                ? AppShadows.cardDark
-                : AppShadows.glowPrimary,
-          ),
-          child: Row(children: [
-            const Icon(Icons.calendar_month, color: Colors.white70, size: 28),
-            const SizedBox(width: AppSpacing.md),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Tổng tháng',
-                  style: context.text.bodySmall
-                      ?.copyWith(color: Colors.white70, fontSize: 11)),
-              MoneyText(
-                key: const Key('historyScreen_monthTotal'),
-                amount: data.monthTotal,
-                style: (context.text.titleMedium ?? const TextStyle()).copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+            child: Row(children: [
+              Icon(Icons.calendar_month, color: creamDim, size: 28),
+              const SizedBox(width: AppSpacing.md),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Tổng tháng',
+                    style: context.text.bodySmall
+                        ?.copyWith(color: creamDim, fontSize: 11)),
+                MoneyText(
+                  key: const Key('historyScreen_monthTotal'),
+                  amount: data.monthTotal,
+                  style: (context.text.titleMedium ?? const TextStyle()).copyWith(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: cream,
+                  ),
                 ),
+              ]),
+              const Spacer(),
+              Text(
+                '${data.dailyTotals.length} ngày có chi tiêu',
+                style: context.text.bodySmall
+                    ?.copyWith(color: cream.withOpacity(0.6), fontSize: 11),
               ),
             ]),
-            const Spacer(),
-            Text(
-              '${data.dailyTotals.length} ngày có chi tiêu',
-              style: context.text.bodySmall
-                  ?.copyWith(color: Colors.white60, fontSize: 11),
-            ),
-          ]),
-        ),
+          );
+        }),
 
         // ── Bar chart ────────────────────────────────────────────────────
         if (data.dailyTotals.isNotEmpty) ...[

@@ -41,14 +41,22 @@ class AppBottomNav extends StatelessWidget {
     return Container(
       key: const Key('appBottomNav'),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: colors.hairline)),
+        // Top rule 1.2px: light = MỰC (đường kẻ đậm — signature), dark =
+        // hairline. Dark phân tách bằng border, không shadow (3.7).
+        border: Border(
+          top: BorderSide(
+            color: dark ? colors.hairline : colors.textPrimary,
+            width: 1.2,
+          ),
+        ),
         boxShadow: dark ? AppShadows.floatingDark : AppShadows.floating,
       ),
       child: BottomAppBar(
         color: context.cs.surface,
         elevation: 0,
         shape: const CircularNotchedRectangle(),
-        notchMargin: AppSpacing.sm,
+        // Notch ôm FAB vuông-bo: 8 → 10 (bảng 3.7).
+        notchMargin: 10,
         child: SizedBox(
           height: AppSizes.bottomNavHeight,
           child: Row(
@@ -84,38 +92,60 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.snap;
-    final color = selected ? colors.onTintPrimary : context.cs.onSurfaceVariant;
+    // Selected = pill LIME, chữ/icon ink w600 (highlighter); unselected =
+    // textSecondary. Icon 22 theo spec (3.7).
+    final color =
+        selected ? colors.onAccent : context.cs.onSurfaceVariant;
 
-    final content = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(item.icon, color: color, size: 24),
-        const SizedBox(height: 2),
-        Text(
-          item.label,
-          style: context.text.labelSmall?.copyWith(
-            color: color,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(item.icon, color: color, size: 22),
+          const SizedBox(height: 2),
+          Text(
+            item.label,
+            style: context.text.labelSmall?.copyWith(
+              color: color,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+
+    // Highlighter swipe cho pill lime (2.7), gate a11y.
+    final noMotion = MediaQuery.disableAnimationsOf(context);
+    final sweep = noMotion ? (selected ? 1.0 : 0.0) : null;
 
     return InkWell(
       key: Key('appBottomNav_item_$index'),
       onTap: () => onTap(index),
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.xs,
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: selected ? 1.0 : 0.0),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: Stack(children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: sweep ?? value,
+                  heightFactor: 1,
+                  child: ColoredBox(color: colors.accent),
+                ),
+              ),
+            ),
+            child!,
+          ]),
         ),
-        decoration: selected
-            ? BoxDecoration(
-                color: colors.tintPrimary,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              )
-            : null,
         child: content,
       ),
     );
