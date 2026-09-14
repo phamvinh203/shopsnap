@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../core/constants/app_constants.dart';
-import '../core/theme/app_colors.dart';
+import '../core/theme/snap_colors.dart';
 import '../models/app_update_model.dart';
 
+/// Dialog "Có bản cập nhật mới" — Phase 4: mọi màu đọc qua token
+/// (`context.cs` / `context.snap`) để tự dark; light giữ nguyên hex cũ
+/// (tintPrimary == primaryLight, textPrimary/textSecondary/hairline/success
+/// trùng đúng giá trị AppColors trước đây — xem snap_colors.dart).
 class UpdateDialog extends StatelessWidget {
   final AppUpdateInfo info;
   final VoidCallback? onDismiss;
@@ -40,9 +44,10 @@ class UpdateDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.snap;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: context.cs.surface,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -56,7 +61,7 @@ class UpdateDialog extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryLight,
+                    color: colors.tintPrimary,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Center(
@@ -68,12 +73,12 @@ class UpdateDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Có bản cập nhật mới!',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -81,27 +86,29 @@ class UpdateDialog extends StatelessWidget {
                         children: [
                           Text(
                             'v${info.currentVersion}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.textSecondary,
+                              color: colors.textSecondary,
                               decoration: TextDecoration.lineThrough,
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.textSecondary),
+                          Icon(Icons.arrow_forward_rounded,
+                              size: 14, color: colors.textSecondary),
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.15),
+                              color: colors.success.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               'v${info.latestVersion}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.success,
+                                color: colors.success,
                               ),
                             ),
                           ),
@@ -114,17 +121,17 @@ class UpdateDialog extends StatelessWidget {
             ),
 
             const SizedBox(height: 16),
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: colors.hairline, height: 1),
             const SizedBox(height: 14),
 
             // Release Title & Notes
             if (info.releaseTitle.isNotEmpty) ...[
               Text(
                 info.releaseTitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -135,26 +142,28 @@ class UpdateDialog extends StatelessWidget {
                 constraints: const BoxConstraints(maxHeight: 180),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.bgMain,
+                  // Nền khối notes = màu nền app (light #F7F8FC đúng hex cũ,
+                  // dark thành inset tối trên surface).
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.divider),
+                  border: Border.all(color: colors.hairline),
                 ),
                 child: SingleChildScrollView(
                   child: Text(
                     info.releaseNotes,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
-                      color: AppColors.textSecondary,
+                      color: colors.textSecondary,
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 18),
             ] else ...[
-              const Text(
+              Text(
                 'Bản cập nhật bao gồm các cải tiến hiệu năng và sửa lỗi quan trọng.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                style: TextStyle(fontSize: 13, color: colors.textSecondary),
               ),
               const SizedBox(height: 18),
             ],
@@ -178,11 +187,11 @@ class UpdateDialog extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Để sau',
                       style: TextStyle(
                         fontSize: 15,
-                        color: AppColors.textSecondary,
+                        color: colors.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -201,17 +210,20 @@ class UpdateDialog extends StatelessWidget {
                         onDownload!(url);
                       }
                     },
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18, color: Colors.white),
-                    label: const Text(
+                    // onPrimary: light = trắng (giữ nguyên), dark = chữ tối
+                    // trên primary #8B85FF — đủ contrast cả 2 mode.
+                    icon: Icon(Icons.open_in_new_rounded,
+                        size: 18, color: context.cs.onPrimary),
+                    label: Text(
                       'Cập nhật ngay',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: context.cs.onPrimary,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: context.cs.primary,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

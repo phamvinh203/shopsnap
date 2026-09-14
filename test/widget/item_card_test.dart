@@ -50,6 +50,19 @@ void main() {
       expect(tapped, isTrue);
     });
 
+    testWidgets('exposes itemCard_<id> key and opens detail on tap (P3a)', (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(_wrap(ItemCard(
+        key: const Key('itemCard_item-1'),
+        item: _item(),
+        onDelete: () {},
+        onTap: () => tapped = true,
+      )));
+      // Key convention P2/P3a: Home truyền Key('itemCard_<id>') — tap theo key.
+      await tester.tap(find.byKey(const Key('itemCard_item-1')));
+      expect(tapped, isTrue);
+    });
+
     testWidgets('shows default icon when imagePath is null', (tester) async {
       await tester.pumpWidget(_wrap(ItemCard(
         item: _item(),

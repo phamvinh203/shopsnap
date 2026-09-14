@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/theme/app_colors.dart';
-import '../../providers/auth_provider.dart';
 
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/snap_colors.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../widgets/ui/ui.dart';
+
+/// Shell của 3 tab chính (Trang chủ / Tổng kết / Lịch sử) + FAB giữa.
+///
+/// Auth gate MỀM (PO chốt 2026-09-14): khi CHƯA đăng nhập vẫn xem/sửa dữ liệu
+/// local bình thường — chỉ hiện 1 banner mảnh mời đăng nhập, và trong sheet
+/// Cài đặt thay mục "Đăng xuất" bằng mục "Đăng nhập". Khi đã đăng nhập, banner
+/// tự ẩn (không chiếm chỗ).
 class MainShell extends ConsumerWidget {
   final Widget child;
   const MainShell({required this.child, super.key});
@@ -19,30 +29,34 @@ class MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = _currentIndex(context);
+    // watch (không read) — banner phải phản ứng ngay khi login/logout/401.
+    final authenticated =
+        ref.watch(authStateProvider).valueOrNull?.isAuthenticated == true;
+
     return Scaffold(
-      body: child,
+      body: Column(
+        children: [
+          if (!authenticated) const _LoginBanner(),
+          Expanded(child: child),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
+        key: const Key('shell_fab'),
         onPressed: () => context.push('/add'),
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        child: const Icon(Icons.add_a_photo_outlined, color: Colors.white, size: 26),
+        child: const Icon(Icons.add_a_photo_outlined, size: 26),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: AppColors.bgCard,
-        elevation: 8,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(icon: Icons.home_outlined,     label: 'Trang chủ', selected: idx == 0, onTap: () => context.go('/')),
-            _NavItem(icon: Icons.bar_chart_outlined, label: 'Tổng kết',  selected: idx == 1, onTap: () => context.go('/summary')),
-            const SizedBox(width: 60), // FAB gap
-            _NavItem(icon: Icons.history_outlined,  label: 'Lịch sử',   selected: idx == 2, onTap: () => context.go('/history')),
-            _NavItem(icon: Icons.settings_outlined, label: 'Cài đặt',   selected: false,    onTap: () => _showSettingsSheet(context, ref)),
-          ],
-        ),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: idx,
+        onTap: (i) {
+          // Item 3 = "Cài đặt" — pseudo-tab mở sheet, không có route riêng
+          // (giữ nguyên hành vi hiện có; /profile là việc của phase sau).
+          if (i == 3) {
+            _showSettingsSheet(context, ref);
+            return;
+          }
+          context.go(_tabs[i]);
+        },
       ),
     );
   }
@@ -50,117 +64,200 @@ class MainShell extends ConsumerWidget {
   // ── Sheet Cài đặt: tài khoản + ngân sách + đăng xuất ──────────────────────
 
   void _showSettingsSheet(BuildContext context, WidgetRef ref) {
-    // ref.read (không watch) — sheet không cần rebuild theo auth state
-    final user = ref.read(authStateProvider).valueOrNull?.user;
-    showModalBottomSheet<void>(
+    // ref.read (không watch) — sheet tĩnh theo trạng thái lúc mở; khi auth
+    // state đổi giữa chừng, MainShell build lại nhưng sheet không cần rebuild.
+    final auth = ref.read(authStateProvider).valueOrNull;
+    final authenticated = auth?.isAuthenticated == true;
+    final user = auth?.user;
+
+    AppBottomSheet.show<void>(
       context: context,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Tay cầm sheet
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2),
+      title: 'Cài đặt',
+      builder: (sheetContext) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (user != null)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                backgroundColor: context.snap.tintPrimary,
+                child: Text(
+                  user.displayName.isNotEmpty
+                      ? user.displayName[0].toUpperCase()
+                      : '?',
+                  style: context.text.titleMedium
+                      ?.copyWith(color: context.cs.primary),
                 ),
               ),
-              if (user != null)
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.primaryLight,
-                    child: Text(
-                      user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                          color: AppColors.primary, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  title: Text(user.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(user.email,
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                ),
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.primary),
-                title: const Text('Cài đặt ngân sách'),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  context.push('/budget');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout_rounded, color: AppColors.danger),
-                title: const Text('Đăng xuất',
-                    style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _confirmLogout(context, ref);
-                },
-              ),
-            ],
+              title: Text(user.displayName,
+                  style: context.text.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Text(user.email, style: context.text.bodySmall),
+            ),
+          // Auth gate mềm: chưa đăng nhập → mời đăng nhập thay vì đăng xuất.
+          if (!authenticated)
+            ListTile(
+              key: const Key('shell_settingsSheet_loginEntry'),
+              contentPadding: EdgeInsets.zero,
+              leading:
+                  Icon(Icons.login_rounded, color: context.cs.primary),
+              title: const Text('Đăng nhập để đồng bộ dữ liệu'),
+              subtitle: Text('Dữ liệu đang lưu trên máy này',
+                  style: context.text.bodySmall),
+              trailing: Icon(Icons.chevron_right,
+                  color: context.cs.onSurfaceVariant),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                context.push('/login');
+              },
+            ),
+          // Phase 4 — chọn giao diện System / Sáng / Tối (persist qua prefs).
+          const Divider(height: AppSpacing.xl),
+          const _ThemeModeSection(),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.account_balance_wallet_outlined,
+                color: context.cs.primary),
+            title: const Text('Cài đặt ngân sách'),
+            trailing:
+                Icon(Icons.chevron_right, color: context.cs.onSurfaceVariant),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              context.push('/budget');
+            },
           ),
-        ),
+          if (authenticated)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.logout_rounded, color: context.snap.danger),
+              title: Text('Đăng xuất',
+                  style: context.text.titleSmall
+                      ?.copyWith(color: context.snap.danger)),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _confirmLogout(context, ref);
+              },
+            ),
+        ],
       ),
     );
   }
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmDialog.show(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Đăng xuất'),
-        content: const Text('Bạn chắc chắn muốn đăng xuất khỏi ShopSnap?'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Huỷ', style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Đăng xuất',
-                style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+      title: 'Đăng xuất',
+      message: 'Bạn chắc chắn muốn đăng xuất khỏi ShopSnap?',
+      confirmLabel: 'Đăng xuất',
+      destructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await ref.read(authStateProvider.notifier).logout();
-      // authStateProvider đổi → router redirect về /login
+      // authStateProvider đổi → router refresh; với auth gate mềm user ở lại
+      // màn đang đứng, banner đăng nhập tự xuất hiện.
     }
   }
 }
 
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  final bool     selected;
-  final VoidCallback onTap;
+/// Mục chọn giao diện (Phase 4 — dark mode): System / Sáng / Tối qua
+/// [SegmentedButton], persist qua [themeModeProvider] (SharedPreferences).
+///
+/// ConsumerWidget riêng vì sheet cha đọc auth bằng `ref.read` MỘT lần lúc mở
+/// (tĩnh), còn lựa chọn theme phải rebuild ngay khi user chạm segment.
+class _ThemeModeSection extends ConsumerWidget {
+  const _ThemeModeSection();
 
-  const _NavItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // valueOrNull ?? system: khớp wiring ở app.dart cho case prefs chưa load.
+    final mode = ref.watch(themeModeProvider).valueOrNull ?? ThemeMode.system;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+          child: Row(children: [
+            Icon(Icons.palette_outlined, size: 22, color: context.cs.primary),
+            const SizedBox(width: AppSpacing.lg),
+            Text('Giao diện', style: context.text.titleSmall),
+          ]),
+        ),
+        SegmentedButton<ThemeMode>(
+          key: const Key('shell_settingsSheet_themeSection'),
+          // Key đặt trên Icon (ButtonSegment không nhận key) để test tap
+          // theo key thay vì theo text (khuyến nghị memo redesign mục 5).
+          segments: const [
+            ButtonSegment(
+              value: ThemeMode.system,
+              icon: Icon(Icons.brightness_auto_outlined,
+                  key: Key('shell_themeOption_system')),
+              label: Text('Hệ thống'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.light,
+              icon: Icon(Icons.light_mode_outlined,
+                  key: Key('shell_themeOption_light')),
+              label: Text('Sáng'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.dark,
+              icon: Icon(Icons.dark_mode_outlined,
+                  key: Key('shell_themeOption_dark')),
+              label: Text('Tối'),
+            ),
+          ],
+          selected: {mode},
+          onSelectionChanged: (selection) => ref
+              .read(themeModeProvider.notifier)
+              .setMode(selection.first),
+        ),
+      ],
+    );
+  }
+}
+
+/// Banner mảnh mời đăng nhập khi chưa có token — nhỏ gọn, không chặn việc
+/// dùng app (auth gate mềm). Bấm → push /login.
+class _LoginBanner extends StatelessWidget {
+  const _LoginBanner();
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.textSecondary;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
-        ]),
+    final colors = context.snap;
+    return Material(
+      key: const Key('shell_loginBanner'),
+      color: colors.tintPrimary,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colors.hairline)),
+        ),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.xs, AppSpacing.sm, AppSpacing.xs,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.account_circle_outlined,
+                size: 20, color: colors.onTintPrimary),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'Đăng nhập để đồng bộ dữ liệu lên máy chủ',
+                key: const Key('shell_loginBanner_text'),
+                style: context.text.bodySmall
+                    ?.copyWith(color: colors.onTintPrimary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            TextButton(
+              key: const Key('shell_loginBanner_action'),
+              onPressed: () => context.push('/login'),
+              child: const Text('Đăng nhập'),
+            ),
+          ],
+        ),
       ),
     );
   }

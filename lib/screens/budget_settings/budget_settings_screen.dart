@@ -2,25 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../models/budget_model.dart';
 import '../../models/category_model.dart';
 import '../../providers/all_budgets_provider.dart';
 import '../../providers/categories_provider.dart';
-
-/// Snackbar lỗi tiếng Việt chung cho screen (lỗi nghiệp vụ từ server khi
-/// online: trùng kỳ, allocated > total, ngày không hợp lệ...).
-void _showError(BuildContext context, Object error) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content:  Text(apiErrorMessage(error)),
-    backgroundColor: AppColors.danger,
-    behavior: SnackBarBehavior.floating,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    margin:   const EdgeInsets.all(12),
-  ));
-}
+import '../../widgets/ui/ui.dart';
 
 class BudgetSettingsScreen extends ConsumerWidget {
   const BudgetSettingsScreen({super.key});
@@ -31,34 +21,54 @@ class BudgetSettingsScreen extends ConsumerWidget {
     final catsAsync    = ref.watch(categoriesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bgMain,
-      appBar: AppBar(
-        backgroundColor:  Colors.white,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Cài đặt ngân sách',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-      ),
+      // Nền/appbar lấy từ theme (bỏ Colors.white + AppColors.bgMain hardcode).
+      appBar: AppBar(title: const Text('Cài đặt ngân sách')),
       floatingActionButton: FloatingActionButton.extended(
+        key: const Key('budgetSettings_fab'),
         onPressed: () => _showAddSheet(context, ref,
             cats: catsAsync.valueOrNull ?? []),
         icon:  const Icon(Icons.add),
         label: const Text('Thêm ngân sách'),
       ),
       body: budgetsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error:   (e, _) => Center(child: Text('Lỗi: $e')),
-        data:    (budgets) => budgets.isEmpty
-            ? _EmptyBudget(onAdd: () => _showAddSheet(context, ref,
-                cats: catsAsync.valueOrNull ?? []))
-            : ListView.builder(
-                padding:     const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                itemCount:   budgets.length,
-                itemBuilder: (_, i) => _BudgetCard(
-                  status: budgets[i],
-                  cats:   catsAsync.valueOrNull ?? [],
-                  onEdit: () => _showEditSheet(context, ref, budgets[i],
-                      cats: catsAsync.valueOrNull ?? []),
-                  onDelete: () => _confirmDelete(context, ref, budgets[i].budget.id),
+        // Skeleton thay spinner trần (memo S3).
+        loading: () => const SingleChildScrollView(
+          // Cuộn được để không tràn trên màn hình thấp.
+          child: Padding(
+            padding: EdgeInsets.all(AppSpacing.lg),
+            child: SkeletonList(itemCount: 4, itemHeight: 150),
+          ),
+        ),
+        // Không còn 'Lỗi: $e' — ErrorState + Thử lại invalidate đúng provider.
+        error: (_, __) => ErrorState(
+          key: const Key('budgetSettings_errorState'),
+          onRetry: () => ref.invalidate(allBudgetsProvider),
+        ),
+        data: (budgets) => budgets.isEmpty
+            ? EmptyState(
+                key: const Key('budgetSettings_emptyState'),
+                icon: Icons.savings_outlined,
+                title: 'Chưa có ngân sách nào',
+                message: 'Tạo ngân sách để theo dõi chi tiêu',
+                actionLabel: 'Thêm ngân sách đầu tiên',
+                onAction: () => _showAddSheet(context, ref,
+                    cats: catsAsync.valueOrNull ?? []),
+              )
+            : RefreshIndicator(
+                color: context.cs.primary,
+                onRefresh: () async => ref.invalidate(allBudgetsProvider),
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 100),
+                  itemCount:   budgets.length,
+                  itemBuilder: (_, i) => _BudgetCard(
+                    status: budgets[i],
+                    cats:   catsAsync.valueOrNull ?? [],
+                    onEdit: () => _showEditSheet(context, ref, budgets[i],
+                        cats: catsAsync.valueOrNull ?? []),
+                    onDelete: () =>
+                        _confirmDelete(context, ref, budgets[i].budget.id),
+                  ),
                 ),
               ),
       ),
@@ -69,12 +79,11 @@ class BudgetSettingsScreen extends ConsumerWidget {
 
   void _showAddSheet(BuildContext context, WidgetRef ref,
       {required List<CategoryModel> cats}) {
-    showModalBottomSheet(
-      context:            context,
-      isScrollControlled: true,
-      backgroundColor:    Colors.transparent,
+    AppBottomSheet.show<void>(
+      context: context,
+      title: 'Thêm ngân sách',
       builder: (_) => _BudgetFormSheet(
-        cats:    cats,
+        cats: cats,
         // Ném lỗi lên sheet tự bắt → sheet không đóng, snackbar hiện lỗi
         onSave: (amount, period, catId) =>
             ref.read(allBudgetsProvider.notifier).addBudget(
@@ -88,17 +97,16 @@ class BudgetSettingsScreen extends ConsumerWidget {
 
   void _showEditSheet(BuildContext context, WidgetRef ref, BudgetStatus status,
       {required List<CategoryModel> cats}) {
-    showModalBottomSheet(
-      context:            context,
-      isScrollControlled: true,
-      backgroundColor:    Colors.transparent,
+    AppBottomSheet.show<void>(
+      context: context,
+      title: 'Sửa ngân sách',
       builder: (_) => _BudgetFormSheet(
-        cats:         cats,
+        cats:          cats,
         initialAmount: status.budget.amount,
         initialPeriod: status.budget.period,
         initialCatId:  status.budget.categoryId,
         isEdit:        true,
-        onSave:        (amount, _, __) =>
+        onSave: (amount, _, __) =>
             ref.read(allBudgetsProvider.notifier).updateAmount(
               status.budget.id, amount),
       ),
@@ -107,22 +115,14 @@ class BudgetSettingsScreen extends ConsumerWidget {
 
   Future<void> _confirmDelete(
       BuildContext context, WidgetRef ref, String id) async {
-    final ok = await showDialog<bool>(
+    final ok = await ConfirmDialog.show(
       context: context,
-      builder: (_) => AlertDialog(
-        title:   const Text('Xoá ngân sách'),
-        content: const Text('Bạn có chắc muốn xoá ngân sách này không?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
-              child: const Text('Huỷ')),
-          TextButton(
-            onPressed:  () => Navigator.pop(context, true),
-            child: const Text('Xoá', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
+      title: 'Xoá ngân sách',
+      message: 'Bạn có chắc muốn xoá ngân sách này không?',
+      confirmLabel: 'Xoá',
+      destructive: true,
     );
-    if (ok != true || !context.mounted) return;
+    if (!ok || !context.mounted) return;
     try {
       await ref.read(allBudgetsProvider.notifier).deleteBudget(id);
     } catch (e) {
@@ -131,12 +131,22 @@ class BudgetSettingsScreen extends ConsumerWidget {
   }
 }
 
+/// Snackbar lỗi tiếng Việt chung cho screen (lỗi nghiệp vụ từ server khi
+/// online: trùng kỳ, allocated > total, ngày không hợp lệ...).
+void _showError(BuildContext context, Object error) {
+  AppSnackBar.show(
+    context: context,
+    message: apiErrorMessage(error),
+    tone: AppSnackBarTone.danger,
+  );
+}
+
 // ── Budget card ───────────────────────────────────────────────────────────────
 
 class _BudgetCard extends StatelessWidget {
-  final BudgetStatus     status;
+  final BudgetStatus status;
   final List<CategoryModel> cats;
-  final VoidCallback     onEdit, onDelete;
+  final VoidCallback onEdit, onDelete;
 
   const _BudgetCard({
     required this.status,
@@ -147,105 +157,106 @@ class _BudgetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final b        = status.budget;
-    final ratio    = status.usageRatio.clamp(0.0, 1.0);
-    final color    = status.isDanger
-        ? AppColors.danger
-        : status.isWarning
-            ? AppColors.warning
-            : AppColors.success;
-    final catName  = b.categoryId != null
+    final colors = context.snap;
+    final b     = status.budget;
+    final level = budgetLevelFromRatio(status.usageRatio);
+    final color = colors.colorFor(level);
+    final catName = b.categoryId != null
         ? (cats.firstWhere((c) => c.id == b.categoryId,
-                orElse: () => const CategoryModel(id: '', name: 'Khác', icon: '🛍',
-                    color: '#6C63FF', isDefault: false, sortOrder: 0, createdAt: 0))
-              .name)
+                orElse: () => const CategoryModel(
+                    id: '',
+                    name: 'Khác',
+                    icon: '🛍',
+                    color: '#6C63FF',
+                    isDefault: false,
+                    sortOrder: 0,
+                    createdAt: 0))
+            .name)
         : 'Tất cả danh mục';
     final periodLabel = switch (b.period) {
-      BudgetPeriod.day   => 'Hôm nay',
-      BudgetPeriod.week  => 'Tuần này',
+      BudgetPeriod.day => 'Hôm nay',
+      BudgetPeriod.week => 'Tuần này',
       BudgetPeriod.month => 'Tháng này',
       BudgetPeriod.custom => 'Tuỳ chỉnh', // chỉ có ở server, không persist
     };
 
-    return Card(
-      margin:    const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      color:     Colors.white,
-      shape:     RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Padding(
+      // AppCard không có margin — card list tự cách nhau bằng padding.
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        key: Key('budgetSettings_card_${b.id}'),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Row(children: [
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 Row(children: [
                   Container(
-                    padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm, vertical: 2),
                     decoration: BoxDecoration(
-                      color:        AppColors.primaryLight,
-                      borderRadius: BorderRadius.circular(8),
+                      color: colors.tintPrimary,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Text(periodLabel,
-                        style: const TextStyle(
-                            color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                        style: context.text.labelLarge?.copyWith(
+                            color: colors.onTintPrimary, fontSize: 11)),
                   ),
-                  const SizedBox(width: 8),
-                  Text(catName,
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 11)),
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(
+                    child: Text(catName,
+                        style: context.text.bodySmall?.copyWith(fontSize: 11),
+                        overflow: TextOverflow.ellipsis),
+                  ),
                 ]),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpacing.xs + 2),
                 Row(children: [
-                  Text(CurrencyFormatter.format(status.spent),
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize:   18,
-                          color:      color)),
+                  // Mực đã tiêu — tô màu semantic theo ngưỡng 80%/100%
+                  // (map qua budgetLevelFromRatio, không hardcode hex).
+                  Text(
+                    CurrencyFormatter.format(status.spent),
+                    key: Key('budgetSettings_spent_${b.id}'),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        color: color),
+                  ),
                   Text(' / ${CurrencyFormatter.format(b.amount)}',
-                      style: const TextStyle(
-                          color:    AppColors.textSecondary,
-                          fontSize: 13)),
+                      style: context.text.bodySmall),
                 ]),
               ]),
             ),
             PopupMenuButton<String>(
               onSelected: (v) => v == 'edit' ? onEdit() : onDelete(),
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit',   child: Text('Sửa')),
-                const PopupMenuItem(value: 'delete',
-                    child: Text('Xoá', style: TextStyle(color: AppColors.danger))),
+                const PopupMenuItem(value: 'edit', child: Text('Sửa')),
+                PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Xoá',
+                        style: TextStyle(color: context.snap.danger))),
               ],
             ),
           ]),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value:             ratio,
-              backgroundColor:   color.withOpacity(0.12),
-              valueColor:        AlwaysStoppedAnimation(color),
-              minHeight:         7,
-            ),
+          const SizedBox(height: AppSpacing.md - 2),
+          // Bar + % badge — màu map qua budgetLevelFromRatio ở MỘT chỗ.
+          BudgetProgressBar(
+            key: Key('budgetSettings_progress_${b.id}'),
+            spent: status.spent,
+            total: b.amount,
+            compact: true,
           ),
-          const SizedBox(height: 6),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(
-              status.isDanger
-                  ? 'Đã vượt ngân sách!'
-                  : 'Còn lại: ${CurrencyFormatter.format(status.remaining)}',
-              style: TextStyle(
-                  color:      status.isDanger ? AppColors.danger : AppColors.textSecondary,
-                  fontSize:   11,
-                  fontWeight: status.isDanger ? FontWeight.w700 : FontWeight.w400),
-            ),
-            Text(
-              '${(ratio * 100).toStringAsFixed(0)}%',
-              style: TextStyle(
-                  color:      color,
-                  fontSize:   11,
-                  fontWeight: FontWeight.w700),
-            ),
-          ]),
+          const SizedBox(height: AppSpacing.xs + 2),
+          Text(
+            status.isDanger
+                ? 'Đã vượt ngân sách!'
+                : 'Còn lại: ${CurrencyFormatter.format(status.remaining.clamp(0, b.amount))}',
+            style: context.text.bodySmall?.copyWith(
+                color: status.isDanger ? colors.danger : null,
+                fontWeight: status.isDanger ? FontWeight.w700 : null),
+          ),
         ]),
       ),
     );
@@ -256,14 +267,15 @@ class _BudgetCard extends StatelessWidget {
 
 class _BudgetFormSheet extends StatefulWidget {
   final List<CategoryModel> cats;
-  final int?          initialAmount;
+  final int? initialAmount;
   final BudgetPeriod? initialPeriod;
-  final String?       initialCatId;
-  final bool          isEdit;
+  final String? initialCatId;
+  final bool isEdit;
 
   /// Lưu form — Future hoàn tất = thành công; ném lỗi = giữ sheet mở để
   /// người dùng sửa lại (lỗi nghiệp vụ server khi online: trùng kỳ...).
-  final Future<void> Function(int amount, BudgetPeriod period, String? catId) onSave;
+  final Future<void> Function(int amount, BudgetPeriod period, String? catId)
+      onSave;
 
   const _BudgetFormSheet({
     required this.cats,
@@ -280,6 +292,7 @@ class _BudgetFormSheet extends StatefulWidget {
 
 class _BudgetFormSheetState extends State<_BudgetFormSheet> {
   late final TextEditingController _amountCtrl;
+  final _formKey = GlobalKey<FormState>();
   late BudgetPeriod _period;
   String? _catId;
   bool _saving = false;
@@ -294,109 +307,104 @@ class _BudgetFormSheetState extends State<_BudgetFormSheet> {
   }
 
   @override
-  void dispose() { _amountCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _amountCtrl.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(
-          padding:    const EdgeInsets.fromLTRB(20, 12, 20, 28),
-          decoration: const BoxDecoration(
-            color:        Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize:      MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2)),
-              )),
-              Text(widget.isEdit ? 'Sửa ngân sách' : 'Thêm ngân sách',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              const SizedBox(height: 16),
+  Widget build(BuildContext context) => Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Amount — FIX bug validate im lặng (memo B2, budget_settings cũ
+            // dòng 398: amount rỗng/≤0 thì `return;` im lặng): giờ có validator
+            // hiện lỗi dưới field + snackbar danger khi bấm lưu.
+            AppTextField(
+              key: const Key('budgetSheet_amountField'),
+              controller: _amountCtrl,
+              label: 'Số tiền ngân sách',
+              hint: '500000',
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              prefixIcon: Icons.wallet_outlined,
+              suffix: const Padding(
+                padding: EdgeInsets.only(right: AppSpacing.md),
+                child: Text('đ'),
+              ),
+              validator: (v) =>
+                  (int.tryParse(v?.trim() ?? '') ?? 0) <= 0
+                      ? 'Số tiền ngân sách phải lớn hơn 0'
+                      : null,
+            ),
 
-              // Amount
-              const Text('Số tiền ngân sách',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              TextField(
-                controller:     _amountCtrl,
-                keyboardType:   TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  hintText:   '500000',
-                  prefixIcon: Icon(Icons.wallet_outlined, color: AppColors.primary),
-                  suffixText: 'đ',
-                ),
+            if (!widget.isEdit) ...[
+              const SizedBox(height: AppSpacing.lg),
+
+              // Period
+              Text('Chu kỳ', style: context.text.titleSmall),
+              const SizedBox(height: AppSpacing.sm),
+              SegmentedButton<BudgetPeriod>(
+                segments: const [
+                  ButtonSegment(value: BudgetPeriod.day, label: Text('Ngày')),
+                  ButtonSegment(value: BudgetPeriod.week, label: Text('Tuần')),
+                  ButtonSegment(
+                      value: BudgetPeriod.month, label: Text('Tháng')),
+                ],
+                selected: {_period},
+                onSelectionChanged: (s) => setState(() => _period = s.first),
               ),
 
-              if (!widget.isEdit) ...[
-                const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
 
-                // Period
-                const Text('Chu kỳ',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 8),
-                SegmentedButton<BudgetPeriod>(
-                  segments: const [
-                    ButtonSegment(value: BudgetPeriod.day,   label: Text('Ngày')),
-                    ButtonSegment(value: BudgetPeriod.week,  label: Text('Tuần')),
-                    ButtonSegment(value: BudgetPeriod.month, label: Text('Tháng')),
-                  ],
-                  selected: {_period},
-                  onSelectionChanged: (s) => setState(() => _period = s.first),
+              // Category
+              Text('Danh mục (tuỳ chọn)', style: context.text.titleSmall),
+              const SizedBox(height: AppSpacing.sm),
+              DropdownButtonFormField<String?>(
+                value: _catId,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.category_outlined),
                 ),
-
-                const SizedBox(height: 16),
-
-                // Category
-                const Text('Danh mục (tuỳ chọn)',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String?>(
-                  value:     _catId,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.category_outlined, color: AppColors.primary),
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                        value: null, child: Text('Tất cả danh mục')),
-                    ...widget.cats.map((c) => DropdownMenuItem(
-                          value: c.id,
-                          child: Text('${c.icon} ${c.name}'),
-                        )),
-                  ],
-                  onChanged: (v) => setState(() => _catId = v),
-                ),
-              ],
-
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _submit,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(widget.isEdit ? 'Cập nhật' : 'Tạo ngân sách'),
-                ),
+                items: [
+                  const DropdownMenuItem(
+                      value: null, child: Text('Tất cả danh mục')),
+                  ...widget.cats.map((c) => DropdownMenuItem(
+                        value: c.id,
+                        child: Text('${c.icon} ${c.name}'),
+                      )),
+                ],
+                onChanged: (v) => setState(() => _catId = v),
               ),
             ],
-          ),
+
+            const SizedBox(height: AppSpacing.xl),
+            PrimaryButton(
+              key: const Key('budgetSheet_submitButton'),
+              label: widget.isEdit ? 'Cập nhật' : 'Tạo ngân sách',
+              loading: _saving,
+              onPressed: _submit,
+            ),
+          ],
         ),
       );
 
-  /// Gửi form: thành công → đóng sheet; lỗi (validation local lọt qua hoặc
-  /// lỗi nghiệp vụ server khi online) → giữ sheet + snackbar tiếng Việt.
+  /// Gửi form: validation local lỗi → hiện rõ lỗi dưới field + snackbar
+  /// (không còn im lặng). Thành công → đóng sheet; lỗi server → giữ sheet +
+  /// snackbar tiếng Việt.
   Future<void> _submit() async {
+    final valid = _formKey.currentState?.validate() ?? false;
     final amount = int.tryParse(_amountCtrl.text.trim());
-    if (amount == null || amount <= 0) return;
+    if (!valid || amount == null || amount <= 0) {
+      // FIX memo B2: báo lỗi rõ ràng thay vì `return;` im lặng.
+      AppSnackBar.show(
+        context: context,
+        message: 'Số tiền ngân sách phải lớn hơn 0',
+        tone: AppSnackBarTone.danger,
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       await widget.onSave(amount, _period, _catId);
@@ -407,30 +415,4 @@ class _BudgetFormSheetState extends State<_BudgetFormSheet> {
       if (mounted) setState(() => _saving = false);
     }
   }
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-class _EmptyBudget extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _EmptyBudget({required this.onAdd});
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('💰', style: TextStyle(fontSize: 56)),
-          const SizedBox(height: 16),
-          const Text('Chưa có ngân sách nào',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-          const SizedBox(height: 8),
-          const Text('Tạo ngân sách để theo dõi chi tiêu',
-              style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: onAdd,
-            icon:  const Icon(Icons.add),
-            label: const Text('Thêm ngân sách đầu tiên'),
-          ),
-        ]),
-      );
 }

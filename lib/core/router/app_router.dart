@@ -35,11 +35,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       //    khi restore xong (state đổi) → redirect được chạy lại tự động.
       if (auth.status == AuthStatus.restoring) return null;
 
-      // 2. Chưa đăng nhập → chỉ cho phép /login và /register.
-      if (!auth.isAuthenticated) return onAuthScreen ? null : '/login';
+      // 2. AUTH GATE MỀM (PO chốt 2026-09-14, biên bản redesign mục 5.1):
+      //    cho phép dùng app KHÔNG đăng nhập — dữ liệu local (sqflite) vẫn xem
+      //    và sửa được offline. Không còn redirect ép về /login; các affordance
+      //    cần tài khoản (đồng bộ, đóng góp barcode, đăng xuất…) tự điều hướng
+      //    về /login ở tầng UI (MainShell banner/sheet, guard sẵn trong
+      //    AddItemScreen cho suggest/contribute).
+      //
+      //    Refresh-token/401 flow giữ nguyên: khi ApiClient báo session hết hạn
+      //    (refresh hỏng), authStateProvider về unauthenticated →
+      //    refreshListenable chạy lại redirect — giờ chỉ ẩn affordance và hiện
+      //    banner đăng nhập, không đá user đang đứng giữa app ra /login.
 
       // 3. Đã đăng nhập mà vào lại trang auth → về trang chủ.
-      if (onAuthScreen) return '/';
+      if (auth.isAuthenticated && onAuthScreen) return '/';
       return null;
     },
     routes: [

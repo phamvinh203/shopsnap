@@ -3,9 +3,14 @@ import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/app_shadows.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
@@ -14,6 +19,7 @@ import '../../models/summary_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/summary_provider.dart';
 import '../../services/summary_api_service.dart';
+import '../../widgets/ui/ui.dart';
 import 'widgets/ai_assistant_card.dart';
 
 class SummaryScreen extends ConsumerStatefulWidget {
@@ -56,37 +62,38 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     final comparison   = ref.watch(serverSummaryProvider(params)).valueOrNull?.comparison;
     final insights     = ref.watch(summaryInsightsProvider(params)).valueOrNull ?? const <SpendingInsight>[];
     final aiAssistant  = ref.watch(aiAssistantProvider(SummaryParams.fmt(_date))).valueOrNull;
-    final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
 
     return Scaffold(
-      backgroundColor: AppColors.bgMain,
+      // Nền + appbar lấy từ theme (không còn Colors.white hardcode).
       body: CustomScrollView(
         slivers: [
           // ── App bar ──────────────────────────────────────────────────────
           SliverAppBar(
             floating:         true,
-            backgroundColor:  Colors.white,
             surfaceTintColor: Colors.transparent,
-            title: const Text('Tổng kết chi tiêu',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            // Xuất CSV cho kỳ đang xem — chỉ khi đã đăng nhập (API cần Bearer)
+            title: Text('Tổng kết chi tiêu',
+                style: context.text.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            // Xuất CSV cho kỳ đang xem — offline-first: chưa đăng nhập thì bấm
+            // vẫn được, app mời đăng nhập (auth gate mềm như MainShell).
             actions: [
-              if (authenticated)
-                _exporting
-                    ? const Padding(
-                        padding: EdgeInsets.only(right: 16),
-                        child: Center(
-                          child: SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      )
-                    : IconButton(
-                        icon:     const Icon(Icons.download_outlined),
-                        tooltip:  'Xuất CSV',
-                        onPressed: _exportCsv,
-                      ),
+              if (_exporting)
+                const Padding(
+                  padding: EdgeInsets.only(right: AppSpacing.lg),
+                  child: Center(
+                    child: SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              else
+                IconButton(
+                  key: const Key('summaryScreen_exportButton'),
+                  icon:     const Icon(Icons.download_outlined),
+                  tooltip:  'Xuất CSV',
+                  onPressed: _exportCsv,
+                ),
             ],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(94),
@@ -103,15 +110,36 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             ),
           ),
 
+          // ── 4 state chuẩn: loading / error / empty / data ────────────────
           summaryAsync.when(
-            loading: () => const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
+            loading: () => const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child: SkeletonList(itemCount: 4, itemHeight: 120),
+              ),
             ),
+            // Không còn 'Lỗi: $e' — ErrorState + Thử lại invalidate đúng provider.
             error: (e, _) => SliverFillRemaining(
-              child: Center(child: Text('Lỗi: $e')),
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: ErrorState(
+                  message: apiErrorMessage(e),
+                  onRetry: () => ref.invalidate(summaryProvider(params)),
+                ),
+              ),
             ),
             data: (summary) => summary.totalSpent == 0
-                ? SliverFillRemaining(child: _EmptyState(date: _date, period: _period))
+                ? SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      title: _emptyMessage(_date, _period),
+                      message: 'Ghi nhanh món vừa mua để xem tổng kết nhé!',
+                      actionLabel: 'Thêm mặt hàng',
+                      onAction: () => context.push('/add'),
+                    ),
+                  )
                 : _SummaryBody(
                     summary:      summary,
                     comparison:   comparison,
@@ -137,11 +165,39 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     if (picked != null) setState(() { _date = picked; _touchedIndex = null; });
   }
 
+  String _emptyMessage(DateTime date, String period) {
+    switch (period) {
+      case 'week':  return 'Tuần này chưa có chi tiêu';
+      case 'month': return 'Tháng này chưa có chi tiêu';
+      case 'year':  return 'Năm nay chưa có chi tiêu';
+      default:
+        return DateHelper.isSameDay(date, DateTime.now())
+            ? 'Hôm nay chưa có chi tiêu'
+            : 'Không có chi tiêu ngày này';
+    }
+  }
+
   /// Xuất CSV của kỳ đang xem (khoảng ngày server-căn qua SummaryParams) vào
-  /// thư mục Documents rồi báo path qua snackbar. Lỗi API → thông điệp VN.
+  /// thư mục Documents.
+  ///
+  /// Auth gate mềm (PO chốt 2026-09-14): chưa đăng nhập → snackbar mời đăng
+  /// nhập có action điều hướng /login, không chặn việc dùng màn hình.
+  /// Lỗi API → thông điệp tiếng Việt, không leak path/exception.
   Future<void> _exportCsv() async {
     if (_exporting) return;
-    final messenger = ScaffoldMessenger.of(context);
+
+    final authenticated =
+        ref.read(authStateProvider).value?.isAuthenticated == true;
+    if (!authenticated) {
+      AppSnackBar.show(
+        context: context,
+        message: 'Đăng nhập để xuất dữ liệu chi tiêu ra file CSV',
+        actionLabel: 'Đăng nhập',
+        onAction: () => context.push('/login'),
+      );
+      return;
+    }
+
     setState(() => _exporting = true);
 
     try {
@@ -156,12 +212,22 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
       final path = '${dir.path}/shopsnap-export-${SummaryParams.fmt(range.$1).substring(0, 7)}.csv';
       await File(path).writeAsString(csv); // UTF-8 mặc định — giữ nguyên BOM \uFEFF
 
-      messenger.showSnackBar(SnackBar(content: Text('Đã xuất CSV: $path')));
+      if (mounted) {
+        // Không hiện path thô (dev-speak) — chỉ báo đã lưu ở thư mục tài liệu.
+        AppSnackBar.show(
+          context: context,
+          message: 'Đã lưu file CSV trong thư mục tài liệu của thiết bị',
+          tone: AppSnackBarTone.success,
+        );
+      }
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content:         Text('Không xuất được CSV: ${apiErrorMessage(e)}'),
-        backgroundColor: AppColors.danger,
-      ));
+      if (mounted) {
+        AppSnackBar.show(
+          context: context,
+          message: 'Không xuất được CSV: ${apiErrorMessage(e)}',
+          tone: AppSnackBarTone.danger,
+        );
+      }
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -178,18 +244,21 @@ class _PeriodTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
         child: SizedBox(
           height: 36,
           child: SegmentedButton<String>(
             selected:          {period},
             showSelectedIcon:  false,
             onSelectionChanged: (s) => onSelected(s.first),
-            style: const ButtonStyle(
-              visualDensity: VisualDensity(horizontal: -3, vertical: -2),
-              textStyle: WidgetStatePropertyAll(TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600,
-              )),
+            style: ButtonStyle(
+              visualDensity: const VisualDensity(horizontal: -3, vertical: -2),
+              textStyle: WidgetStatePropertyAll(
+                context.text.labelSmall?.copyWith(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             segments: const [
               ButtonSegment(value: 'day',   label: Text('Ngày')),
@@ -219,7 +288,7 @@ class _DateNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.xs),
         child: Row(children: [
           IconButton(icon: const Icon(Icons.chevron_left), onPressed: onPrev),
           Expanded(
@@ -229,21 +298,21 @@ class _DateNavBar extends StatelessWidget {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(
                     isToday ? 'Hôm nay' : DateHelper.formatDate(date),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                    style: context.text.titleSmall,
                   ),
                   if (!isToday)
                     Text(
                       DateHelper.formatDate(date),
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      style: context.text.bodySmall,
                     ),
                 ]),
               ),
             ),
           ),
           IconButton(
-            icon:     const Icon(Icons.chevron_right),
+            icon:      const Icon(Icons.chevron_right),
             onPressed: isToday ? null : onNext,
-            color:    isToday ? AppColors.divider : null,
+            disabledColor: context.snap.hairline,
           ),
         ]),
       );
@@ -273,58 +342,67 @@ class _SummaryBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SliverList(
         delegate: SliverChildListDelegate([
-          // ── Hero total card ─────────────────────────────────────────────
+          // ── Hero total card (duy nhất 1 gradient mỗi màn) ───────────────
           Container(
-            margin:  const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            padding: const EdgeInsets.all(20),
+            key: const Key('summaryScreen_heroCard'),
+            margin:  const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [AppColors.primary, AppColors.primaryDark],
                 begin:  Alignment.topLeft,
                 end:    Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color:      AppColors.primary.withOpacity(0.35),
-                  blurRadius: 16,
-                  offset:     const Offset(0, 6),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              boxShadow: Theme.of(context).brightness == Brightness.dark
+                  ? AppShadows.cardDark
+                  : AppShadows.glowPrimary,
             ),
             child: Row(children: [
-              const Icon(Icons.account_balance_wallet_outlined,
-                  color: Colors.white70, size: 36),
-              const SizedBox(width: 14),
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.account_balance_wallet_outlined,
+                    color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: AppSpacing.md + 2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Tổng chi tiêu',
-                      style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  Text(
-                    CurrencyFormatter.format(summary.totalSpent),
-                    style: const TextStyle(
-                      color:      Colors.white,
-                      fontSize:   28,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Text('Tổng chi tiêu',
+                      style: context.text.bodySmall
+                          ?.copyWith(color: Colors.white70)),
+                  // Hero number 28sp/w800 tabular figures (memo mục 1.3).
+                  MoneyText(
+                    key: const Key('summaryScreen_heroTotal'),
+                    amount: summary.totalSpent,
+                    style: AppTypography.moneyOf(context.text,
+                            size: 28, color: Colors.white)
+                        .copyWith(fontWeight: FontWeight.w800),
                   ),
                   Text(
                     '${summary.itemCount} vật phẩm',
-                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    style: context.text.bodySmall
+                        ?.copyWith(color: Colors.white60),
                   ),
                   // So sánh với kỳ liền trước — chỉ có khi lấy được từ server
                   if (comparison != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     Row(children: [
                       Icon(_trendIcon(comparison!.trend),
                           color: Colors.white70, size: 14),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppSpacing.xs),
                       Flexible(
                         child: Text(
                           _trendText(comparison!),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          style: context.text.bodySmall
+                              ?.copyWith(color: Colors.white70),
                         ),
                       ),
                     ]),
@@ -341,17 +419,13 @@ class _SummaryBody extends StatelessWidget {
           // ── Pie chart ───────────────────────────────────────────────────
           if (summary.categories.isNotEmpty) ...[
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-              child: Text('Theo danh mục',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.xxl, AppSpacing.lg, AppSpacing.sm),
+              child: SectionHeader(title: 'Theo danh mục'),
             ),
-            Card(
-              margin:      const EdgeInsets.symmetric(horizontal: 16),
-              shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation:   0,
-              color:       Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: AppCard(
                 child: Column(children: [
                   SizedBox(
                     height: 200,
@@ -362,13 +436,13 @@ class _SummaryBody extends StatelessWidget {
                             onTouch(response?.touchedSection?.touchedSectionIndex);
                           },
                         ),
-                        sections:          _buildSections(summary),
+                        sections:          _buildSections(context, summary),
                         centerSpaceRadius: 44,
                         sectionsSpace:     2,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   _Legend(summary: summary, touchedIndex: touchedIndex),
                 ]),
               ),
@@ -381,43 +455,38 @@ class _SummaryBody extends StatelessWidget {
           // ── Item list (chỉ kỳ ngày — API /summary không trả items) ──────
           if (showItems && summary.items.isNotEmpty) ...[
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-              child: Text('Danh sách vật phẩm',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.xxl, AppSpacing.lg, AppSpacing.sm),
+              child: SectionHeader(title: 'Danh sách vật phẩm'),
             ),
             ...summary.items.map((item) => Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Card(
-                    elevation:   0,
-                    color:       Colors.white,
-                    shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+                  child: AppCard(
+                    padding: EdgeInsets.zero,
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: AppColors.primaryLight,
+                        backgroundColor: context.snap.tintPrimary,
                         child: Text(item.categoryIcon,
                             style: const TextStyle(fontSize: 18)),
                       ),
-                      title: Text(item.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      title: Text(item.name, style: context.text.titleSmall),
                       subtitle: Text(DateHelper.formatTime(item.createdAt),
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      trailing: Text(
-                        CurrencyFormatter.format(item.price),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize:   15,
-                            color:      AppColors.primary),
+                          style: context.text.bodySmall),
+                      trailing: MoneyText(
+                        amount: item.price,
+                        colored: true,
                       ),
                     ),
                   ),
                 )),
           ],
 
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.xxxl),
         ]),
       );
 
-  List<PieChartSectionData> _buildSections(SummaryModel summary) {
+  List<PieChartSectionData> _buildSections(BuildContext context, SummaryModel summary) {
     final total = summary.totalSpent;
     return List.generate(summary.categories.length, (i) {
       final cat     = summary.categories[i];
@@ -427,15 +496,15 @@ class _SummaryBody extends StatelessWidget {
       try {
         color = Color(int.parse(cat.categoryColor.replaceFirst('#', '0xFF')));
       } catch (_) {
-        color = AppColors.primary;
+        color = context.cs.primary;
       }
       return PieChartSectionData(
         value:       cat.totalSpent.toDouble(),
         title:       isTouched ? '${pct.toStringAsFixed(0)}%' : '',
         color:       color,
         radius:      isTouched ? 92 : 80,
-        titleStyle:  const TextStyle(
-            color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+        titleStyle:  TextStyle(
+            color: context.cs.onPrimary, fontWeight: FontWeight.w700, fontSize: 13),
       );
     });
   }
@@ -471,28 +540,29 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 12,
-        runSpacing: 8,
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.sm,
         children: List.generate(summary.categories.length, (i) {
           final cat = summary.categories[i];
           Color color;
           try {
             color = Color(int.parse(cat.categoryColor.replaceFirst('#', '0xFF')));
           } catch (_) {
-            color = AppColors.primary;
+            color = context.cs.primary;
           }
           return Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: 10, height: 10,
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpacing.xs),
             Text(
               '${cat.categoryIcon} ${cat.categoryName}  ${CurrencyFormatter.formatShort(cat.totalSpent)}',
-              style: TextStyle(
-                fontSize:   11,
+              style: (context.text.bodySmall ?? const TextStyle()).copyWith(
                 fontWeight: i == touchedIndex ? FontWeight.w700 : FontWeight.w400,
-                color:      i == touchedIndex ? AppColors.textPrimary : AppColors.textSecondary,
+                color: i == touchedIndex
+                    ? context.cs.onSurface
+                    : context.cs.onSurfaceVariant,
               ),
             ),
           ]);
@@ -511,29 +581,42 @@ class _InsightsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-            child: Text('Gợi ý cho bạn',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.xxl, AppSpacing.lg, AppSpacing.sm),
+            child: SectionHeader(title: 'Gợi ý cho bạn'),
           ),
           for (final insight in insights)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Card(
-                elevation:   0,
-                color:       Colors.white,
-                shape:       RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    backgroundColor: _severityColor(insight.severity).withOpacity(0.12),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+              child: AppCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+                child: Row(children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _severityColor(context, insight.severity)
+                          .withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
                     child: Icon(_typeIcon(insight.type),
-                        color: _severityColor(insight.severity), size: 20),
+                        color: _severityColor(context, insight.severity),
+                        size: 20),
                   ),
-                  title: Text(insight.title,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  subtitle: Text(insight.message,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(insight.title, style: context.text.titleSmall),
+                          const SizedBox(height: 2),
+                          Text(insight.message,
+                              style: context.text.bodySmall),
+                        ]),
+                  ),
+                ]),
               ),
             ),
         ],
@@ -549,45 +632,11 @@ class _InsightsSection extends StatelessWidget {
     }
   }
 
-  static Color _severityColor(String severity) {
+  static Color _severityColor(BuildContext context, String severity) {
     switch (severity) {
-      case 'warning':  return AppColors.warning;
-      case 'positive': return AppColors.success;
-      default:         return AppColors.primary; // info
+      case 'warning':  return context.snap.warning;
+      case 'positive': return context.snap.success;
+      default:         return context.cs.primary; // info
     }
   }
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final DateTime date;
-  final String   period;
-  const _EmptyState({required this.date, required this.period});
-
-  String get _message {
-    switch (period) {
-      case 'week':  return 'Tuần này chưa có chi tiêu';
-      case 'month': return 'Tháng này chưa có chi tiêu';
-      case 'year':  return 'Năm nay chưa có chi tiêu';
-      default:
-        return DateHelper.isSameDay(date, DateTime.now())
-            ? 'Hôm nay chưa có chi tiêu'
-            : 'Không có chi tiêu ngày này';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('🧾', style: TextStyle(fontSize: 56)),
-          const SizedBox(height: 16),
-          Text(
-            _message,
-            style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color:      AppColors.textSecondary),
-          ),
-        ]),
-      );
 }

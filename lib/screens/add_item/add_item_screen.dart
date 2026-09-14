@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/network/api_exception.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../database/daos/item_dao.dart';
@@ -16,6 +18,7 @@ import '../../providers/categories_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../services/barcode_contribute_service.dart';
 import '../../services/category_classifier.dart';
+import '../../widgets/ui/ui.dart';
 import '../scan/widgets/barcode_contribute_sheet.dart';
 import 'widgets/image_picker_section.dart';
 import 'widgets/category_selector.dart';
@@ -128,10 +131,9 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   /// Sheet tạo nhanh category custom (POST /categories khi online, local khi offline).
   /// Thành công → tự chọn luôn category vừa tạo.
   Future<void> _showAddCategorySheet() async {
-    final created = await showModalBottomSheet<CategoryModel>(
-      context:            context,
-      isScrollControlled: true,
-      backgroundColor:    Colors.transparent,
+    final created = await AppBottomSheet.show<CategoryModel>(
+      context: context,
+      title:   'Thêm danh mục',
       builder: (_) => const _AddCategorySheet(),
     );
     if (created != null && mounted) _onCategoryPicked(created.id);
@@ -157,19 +159,13 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
     if (contributed == null || !mounted) return;
 
     setState(() => _barcodeNotFound = false); // đã đóng góp → gỡ banner
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          const Text('Cảm ơn bạn đã đóng góp!'),
-          if (contributed.message.isNotEmpty)
-            Text(contributed.message, style: const TextStyle(fontSize: 12)),
-        ]),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(12),
-        duration: const Duration(seconds: 3),
-      ),
+    AppSnackBar.show(
+      context: context,
+      message: contributed.message.isEmpty
+          ? 'Cảm ơn bạn đã đóng góp!'
+          : 'Cảm ơn bạn đã đóng góp! ${contributed.message}',
+      tone: AppSnackBarTone.success,
+      duration: const Duration(seconds: 3),
     );
   }
 
@@ -200,19 +196,11 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
       ), force: force);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Text('Đã lưu "${_nameCtrl.text.trim()}"'),
-            ]),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.all(12),
-            duration: const Duration(seconds: 2),
-          ),
+        AppSnackBar.show(
+          context: context,
+          message: 'Đã lưu "${_nameCtrl.text.trim()}"',
+          tone: AppSnackBarTone.success,
+          duration: const Duration(seconds: 2),
         );
         context.pop();
       }
@@ -228,19 +216,18 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
         }
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(apiErrorMessage(e)),
-          backgroundColor: AppColors.danger,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(12),
-        ),
+      AppSnackBar.show(
+        context: context,
+        message: apiErrorMessage(e),
+        tone: AppSnackBarTone.danger,
       );
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.danger),
+        // Không hiện raw exception — microcopy tiếng Việt chuẩn.
+        AppSnackBar.show(
+          context: context,
+          message: 'Đã có lỗi xảy ra. Vui lòng thử lại.',
+          tone: AppSnackBarTone.danger,
         );
       }
     } finally {
@@ -250,24 +237,13 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
 
   /// Dialog xác nhận khi server trả 409 ITEM_DUPLICATE:
   /// true = "Ghi lại lần nữa" (POST lại với force=true), false = Huỷ.
-  Future<bool> _confirmDuplicateSave(String serverMessage) => showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Vật phẩm trùng?'),
-      content: Text(
-        '$serverMessage\n'
-        'Bạn muốn ghi lại lần nữa chứ?',
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Ghi lại lần nữa',
-              style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
-        ),
-      ],
-    ),
-  ).then((v) => v == true);
+  Future<bool> _confirmDuplicateSave(String serverMessage) => ConfirmDialog.show(
+    context:       context,
+    title:         'Vật phẩm trùng?',
+    message:       '$serverMessage\nBạn muốn ghi lại lần nữa chứ?',
+    confirmLabel:  'Ghi lại lần nữa',
+    cancelLabel:   'Huỷ',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -277,29 +253,27 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
     final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
     final showContributeBar = authenticated && _scannedBarcode != null && _barcodeNotFound;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Thêm vật phẩm'),
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
-        actions: [
-          // Shortcut: OCR hóa đơn
-          IconButton(
-            tooltip: 'Chụp hóa đơn',
-            icon: const Icon(Icons.receipt_long_outlined),
-            onPressed: () => context.push('/ocr'),
-          ),
-        ],
+    return AppScaffold(
+      title: 'Thêm mặt hàng',
+      // Nút ✕ đóng form (thay leading mặc định) — giữ hành vi pop hiện có.
+      leading: IconButton(
+        key: const Key('addItem_closeButton'),
+        icon: const Icon(Icons.close),
+        tooltip: 'Đóng',
+        onPressed: () => context.pop(),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            // ── Quick action row: Scan + OCR + AR ────────────────────────
+            // ── Quick action row: Quét mã + OCR + AR ─────────────────────
+            // (I4: bỏ nút OCR trùng lặp trên appbar — chỉ còn 1 điểm vào ở đây.)
             Row(children: [
-              Expanded(child: _QuickBtn(
+              Expanded(child: _QuickAction(
+                key: const Key('addItem_quickScan'),
                 icon: Icons.qr_code_scanner,
-                label: 'Scan barcode',
+                label: 'Quét mã',
                 onTap: () async {
                   final result = await context.push<Map<String, dynamic>>('/scan');
                   if (result != null && mounted) {
@@ -325,16 +299,16 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
                   }
                 },
               )),
-              const SizedBox(width: 8),
-              Expanded(child: _QuickBtn(
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(child: _QuickAction(
                 icon: Icons.document_scanner_outlined,
                 label: 'Chụp hóa đơn',
                 onTap: () => context.push('/ocr'),
               )),
-              const SizedBox(width: 8),
-              Expanded(child: _QuickBtn(
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(child: _QuickAction(
                 icon: Icons.auto_fix_high_outlined,
-                label: 'AR Sticker',
+                label: 'Nhãn giá AR',
                 onTap: () async {
                   final path = await context.push<String>('/ar');
                   if (path != null && mounted) {
@@ -344,37 +318,16 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
               )),
             ]),
 
-            const SizedBox(height: 16),
-
             // ── Wave 6: barcode chưa có dữ liệu → mời đóng góp cho cộng đồng ──
             if (showContributeBar) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.volunteer_activism_outlined, color: AppColors.primary, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      Text('Barcode: $_scannedBarcode',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                          overflow: TextOverflow.ellipsis),
-                      const Text('Chưa có dữ liệu — giúp cộng đồng nhé?',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                    ]),
-                  ),
-                  TextButton(
-                    onPressed: _showContributeSheet,
-                    child: const Text('Đóng góp'),
-                  ),
-                ]),
+              const SizedBox(height: AppSpacing.lg),
+              _ContributeBanner(
+                barcode: _scannedBarcode ?? '',
+                onContribute: _showContributeSheet,
               ),
-              const SizedBox(height: 16),
             ],
+
+            const SizedBox(height: AppSpacing.lg),
 
             // ── Image picker ─────────────────────────────────────────────
             ImagePickerSection(
@@ -382,36 +335,32 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
               onImagePicked: (p) => setState(() => _imagePath = p),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSpacing.xl),
 
             // ── Tên sản phẩm ──────────────────────────────────────────
-            const _Label('Tên sản phẩm'),
-            const SizedBox(height: 6),
-            TextFormField(
+            AppTextField(
+              key: const Key('addItem_nameField'),
               controller:  _nameCtrl,
+              label:       'Tên sản phẩm',
+              hint:        'VD: Cà phê sữa, Áo thun xanh...',
+              prefixIcon:  Icons.shopping_bag_outlined,
               onChanged:   _onNameChanged,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText:    'VD: Cà phê sữa, Áo thun xanh...',
-                prefixIcon:  Icon(Icons.shopping_bag_outlined, color: AppColors.primary),
-              ),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập tên sản phẩm' : null,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
 
             // ── Giá tiền ──────────────────────────────────────────────
-            const _Label('Giá tiền (đ)'),
-            const SizedBox(height: 6),
-            TextFormField(
+            AppTextField(
+              key: const Key('addItem_priceField'),
               controller:  _priceCtrl,
+              label:       'Giá tiền (đ)',
+              hint:        '0',
+              prefixIcon:  Icons.attach_money,
+              suffix:      const Text('đ'),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                hintText:   '0',
-                prefixIcon: Icon(Icons.attach_money, color: AppColors.primary),
-                suffixText: 'đ',
-              ),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Vui lòng nhập giá';
                 if (int.tryParse(v) == null) return 'Giá không hợp lệ';
@@ -419,9 +368,9 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
               },
             ),
 
-            // Price comparison hint
+            // Price comparison hint (chỉ hiện khi giá > 0 — xem component)
             if (_lastPrice != null || _avgPrice != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               PriceComparisonHint(
                 currentPrice: CurrencyFormatter.parse(_priceCtrl.text),
                 lastPrice:    _lastPrice,
@@ -429,11 +378,11 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
               ),
             ],
 
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSpacing.xl),
 
             // ── Danh mục ──────────────────────────────────────────────
-            const _Label('Danh mục'),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Danh mục'),
+            const SizedBox(height: AppSpacing.sm),
             catsAsync.when(
               data: (cats) => CategorySelector(
                 categories:    cats,
@@ -442,41 +391,35 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
                 onAddCategory: _showAddCategorySheet,
                 onChanged:     _onCategoryPicked,
               ),
-              loading: () => const SizedBox(height: 48, child: Center(child: CircularProgressIndicator())),
-              error:   (_, __) => const SizedBox.shrink(),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ── Ghi chú ───────────────────────────────────────────────
-            const _Label('Ghi chú (tuỳ chọn)'),
-            const SizedBox(height: 6),
-            TextFormField(
-              controller: _noteCtrl,
-              maxLines:   3,
-              decoration: const InputDecoration(
-                hintText:    'Ghi chú thêm về sản phẩm...',
-                prefixIcon:  Padding(
-                  padding: EdgeInsets.only(bottom: 40),
-                  child: Icon(Icons.notes_outlined, color: AppColors.primary),
-                ),
-                alignLabelWithHint: true,
+              loading: () => const LoadingSkeleton(height: 40, radius: AppRadius.md),
+              error:   (_, __) => ErrorState(
+                message: 'Không tải được danh mục.',
+                onRetry: () => ref.invalidate(categoriesProvider),
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: AppSpacing.xl),
 
-            // ── Save button ───────────────────────────────────────────
-            ElevatedButton(
-              onPressed: _isSaving ? null : _save,
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 22, height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : const Text('💾  Lưu vật phẩm'),
+            // ── Ghi chú ───────────────────────────────────────────────
+            AppTextField(
+              key: const Key('addItem_noteField'),
+              controller: _noteCtrl,
+              label:      'Ghi chú (tuỳ chọn)',
+              hint:       'Ghi chú thêm về sản phẩm...',
+              maxLines:   3,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.xxl),
+
+            // ── Save button ───────────────────────────────────────────
+            PrimaryButton(
+              key: const Key('addItem_saveButton'),
+              label:    'Lưu mặt hàng',
+              loading:  _isSaving,
+              onPressed: _save,
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
           ],
         ),
       ),
@@ -484,39 +427,98 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   }
 }
 
-class _Label extends StatelessWidget {
-  final String text;
-  const _Label(this.text);
-  @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
-  );
-}
-
-class _QuickBtn extends StatelessWidget {
+/// Nút quick action (Quét mã / Chụp hóa đơn / Nhãn giá AR) — Material+InkWell
+/// có ripple + semantics (I5), style từ tokens (không còn GestureDetector trần).
+class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String   label;
   final VoidCallback onTap;
-  const _QuickBtn({required this.icon, required this.label, required this.onTap});
+
+  const _QuickAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+  Widget build(BuildContext context) {
+    final colors = context.snap;
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: colors.tintPrimary,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: colors.onTintPrimary, size: 22),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  label,
+                  style: context.text.labelSmall?.copyWith(
+                    color: colors.onTintPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: AppColors.primary, size: 22),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// Banner mời đóng góp barcode — style từ tokens, giữ nguyên text/luồng Wave 6.
+class _ContributeBanner extends StatelessWidget {
+  final String barcode;
+  final VoidCallback onContribute;
+
+  const _ContributeBanner({required this.barcode, required this.onContribute});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.snap;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: colors.tintPrimary,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.cs.primary.withOpacity(0.3)),
+      ),
+      child: Row(children: [
+        Icon(Icons.volunteer_activism_outlined,
+            color: context.cs.primary, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Barcode: $barcode',
+                  style: context.text.labelLarge?.copyWith(fontSize: 12),
+                  overflow: TextOverflow.ellipsis),
+              Text('Chưa có dữ liệu — giúp cộng đồng nhé?',
+                  style: context.text.bodySmall?.copyWith(fontSize: 11)),
+            ],
+          ),
+        ),
+        TextButton(onPressed: onContribute, child: const Text('Đóng góp')),
       ]),
-    ),
-  );
+    );
+  }
 }
 
 // ── Sheet tạo nhanh category custom (Wave 2) ────────────────────────────────
@@ -558,6 +560,10 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
       setState(() => _error = 'Vui lòng nhập tên danh mục');
       return;
     }
+    if (name.length > 100) {
+      setState(() => _error = 'Tên danh mục tối đa 100 ký tự');
+      return;
+    }
     setState(() { _saving = true; _error = null; });
     try {
       final cat = await ref.read(categoriesProvider.notifier)
@@ -570,109 +576,87 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-      decoration: const BoxDecoration(
-        color:        Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(child: Container(
-            width: 40, height: 4,
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2)),
-          )),
-          const Text('Thêm danh mục',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 16),
-
-          // Tên danh mục
-          const Text('Tên danh mục',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _nameCtrl,
-            maxLength: 100,
-            autofocus: true,
-            buildCounter: (_, {required currentLength, required isFocused, int? maxLength}) => null,
-            decoration: InputDecoration(
-              hintText:   'VD: Thú cưng, Đồ dùng học tập...',
-              prefixIcon: const Icon(Icons.category_outlined, color: AppColors.primary),
-              errorText:  _error,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Icon (emoji)
-          const Text('Biểu tượng',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: _iconChoices.map((e) => GestureDetector(
-              onTap: () => setState(() => _icon = e),
-              child: Container(
-                width: 40, height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color:        _icon == e ? AppColors.primaryLight : AppColors.bgCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _icon == e ? AppColors.primary : AppColors.divider,
-                    width: 1.5,
-                  ),
-                ),
-                child: Text(e, style: const TextStyle(fontSize: 18)),
-              ),
-            )).toList(),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Màu
-          const Text('Màu sắc',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 10, runSpacing: 10,
-            children: _colorChoices.map((hex) => GestureDetector(
-              onTap: () => setState(() => _color = hex),
-              child: Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(
-                  color: _hexToColor(hex),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _color == hex ? AppColors.textPrimary : Colors.transparent,
-                    width: 3,
-                  ),
-                ),
-              ),
-            )).toList(),
-          ),
-
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _save,
-              child: _saving
-                  ? const SizedBox(
-                      width: 22, height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : const Text('Tạo danh mục'),
-            ),
+  Widget build(BuildContext context) {
+    final colors = context.snap;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppTextField(
+          key: const Key('addCategorySheet_nameField'),
+          controller: _nameCtrl,
+          label: 'Tên danh mục',
+          hint: 'VD: Thú cưng, Đồ dùng học tập...',
+          prefixIcon: Icons.category_outlined,
+          autofocus: true,
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            _error!,
+            key: const Key('addCategorySheet_error'),
+            style: context.text.bodySmall?.copyWith(color: colors.danger),
           ),
         ],
-      ),
-    ),
-  );
+
+        const SizedBox(height: AppSpacing.md),
+
+        // Icon (emoji — dữ liệu category, giữ nguyên danh sách choice)
+        Text('Biểu tượng', style: context.text.labelLarge),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm, runSpacing: AppSpacing.sm,
+          children: _iconChoices.map((e) => InkWell(
+            onTap: () => setState(() => _icon = e),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Container(
+              width: 40, height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color:        _icon == e ? colors.tintPrimary : context.cs.surface,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border.all(
+                  color: _icon == e ? colors.onTintPrimary : colors.hairline,
+                  width: 1.5,
+                ),
+              ),
+              child: Text(e, style: const TextStyle(fontSize: 18)),
+            ),
+          )).toList(),
+        ),
+
+        const SizedBox(height: AppSpacing.md),
+
+        // Màu
+        Text('Màu sắc', style: context.text.labelLarge),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: 10, runSpacing: 10,
+          children: _colorChoices.map((hex) => InkWell(
+            onTap: () => setState(() => _color = hex),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: _hexToColor(hex),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _color == hex ? context.cs.primary : colors.hairline,
+                  width: 3,
+                ),
+              ),
+            ),
+          )).toList(),
+        ),
+
+        const SizedBox(height: AppSpacing.xl),
+        PrimaryButton(
+          key: const Key('addCategorySheet_submitButton'),
+          label: 'Tạo danh mục',
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ],
+    );
+  }
 }

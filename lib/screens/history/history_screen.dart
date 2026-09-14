@@ -4,11 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/app_shadows.dart';
+import '../../core/theme/snap_colors.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
 import '../../database/daos/item_dao.dart';
 import '../../models/item_model.dart';
 import '../../providers/database_provider.dart';
+import '../../widgets/ui/ui.dart';
 import 'price_history_screen.dart';
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -92,69 +96,77 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final key      = _MonthKey(_month.year, _month.month);
-    final async    = ref.watch(_monthProvider(key));
+    final key   = _MonthKey(_month.year, _month.month);
+    final async = ref.watch(_monthProvider(key));
 
     return Scaffold(
-      backgroundColor: AppColors.bgMain,
+      // Nền/appbar lấy từ theme (bỏ Colors.white + AppColors.bgMain hardcode).
       appBar: AppBar(
-        backgroundColor:  Colors.white,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Lịch sử chi tiêu',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('Lịch sử chi tiêu'),
         actions: [
           TextButton.icon(
             onPressed: () {
+              // Đáng lẽ là route go_router (memo R5) nhưng router ngoài phạm vi
+              // phase này — giữ nguyên Navigator.push cũ.
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const PriceHistoryScreen()),
               );
             },
-            icon: const Icon(Icons.show_chart, size: 18, color: AppColors.primary),
-            label: const Text(
+            icon: Icon(Icons.show_chart, size: 18, color: context.cs.primary),
+            label: Text(
               'Biến động giá',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
+              style: context.text.labelLarge?.copyWith(
+                color: context.cs.primary,
                 fontSize: 13,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
         ],
       ),
       body: CustomScrollView(
         slivers: [
           // ── Month navigator ──────────────────────────────────────────────
           SliverToBoxAdapter(
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm + 4),
               child: Row(children: [
                 IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prevMonth),
                 Expanded(
                   child: Center(
                     child: Text(
                       DateHelper.formatMonthYear(_month),
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: context.text.titleMedium,
                     ),
                   ),
                 ),
                 IconButton(
                   icon:      const Icon(Icons.chevron_right),
                   onPressed: _isCurrentMonth ? null : _nextMonth,
-                  color:     _isCurrentMonth ? AppColors.divider : null,
+                  disabledColor: context.snap.hairline,
                 ),
               ]),
             ),
           ),
 
+          // ── 4 state chuẩn: loading / error / data ────────────────────────
           async.when(
-            loading: () => const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
+            loading: () => const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child: SkeletonList(itemCount: 4, itemHeight: 120),
+              ),
             ),
+            // Không còn 'Lỗi: $e' — ErrorState + Thử lại invalidate đúng provider.
             error: (e, _) => SliverFillRemaining(
-              child: Center(child: Text('Lỗi: $e')),
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: ErrorState(
+                  onRetry: () => ref.invalidate(_monthProvider(key)),
+                ),
+              ),
             ),
             data: (data) => _Body(
               month:        _month,
@@ -189,32 +201,42 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return SliverList(
       delegate: SliverChildListDelegate([
-        // ── Monthly total ────────────────────────────────────────────────
+        // ── Monthly total (hero card gradient duy nhất của màn) ──────────
         Container(
-          margin:  const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          padding: const EdgeInsets.all(16),
+          margin:  const EdgeInsets.fromLTRB(
+              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [AppColors.primary, AppColors.primaryDark],
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            boxShadow: Theme.of(context).brightness == Brightness.dark
+                ? AppShadows.cardDark
+                : AppShadows.glowPrimary,
           ),
           child: Row(children: [
             const Icon(Icons.calendar_month, color: Colors.white70, size: 28),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Tổng tháng',
-                  style: TextStyle(color: Colors.white70, fontSize: 11)),
-              Text(
-                CurrencyFormatter.format(data.monthTotal),
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22),
+              Text('Tổng tháng',
+                  style: context.text.bodySmall
+                      ?.copyWith(color: Colors.white70, fontSize: 11)),
+              MoneyText(
+                key: const Key('historyScreen_monthTotal'),
+                amount: data.monthTotal,
+                style: (context.text.titleMedium ?? const TextStyle()).copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ]),
             const Spacer(),
             Text(
               '${data.dailyTotals.length} ngày có chi tiêu',
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
+              style: context.text.bodySmall
+                  ?.copyWith(color: Colors.white60, fontSize: 11),
             ),
           ]),
         ),
@@ -222,75 +244,88 @@ class _Body extends ConsumerWidget {
         // ── Bar chart ────────────────────────────────────────────────────
         if (data.dailyTotals.isNotEmpty) ...[
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-            child: Text('Chi tiêu theo ngày',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.sm),
+            child: SectionHeader(title: 'Chi tiêu theo ngày'),
           ),
-          Card(
-            margin:    const EdgeInsets.symmetric(horizontal: 16),
-            elevation: 0,
-            color:     Colors.white,
-            shape:     RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-              child: SizedBox(
-                height: 180,
-                child: BarChart(
-                  BarChartData(
-                    maxY:       (data.dailyTotals.map((d) => d.total).reduce((a, b) => a > b ? a : b) * 1.2),
-                    barTouchData: BarTouchData(
-                      touchTooltipData: BarTouchTooltipData(
-                        getTooltipItem: (group, _, rod, __) => BarTooltipItem(
-                          'Ngày ${group.x}\n${CurrencyFormatter.formatShort(rod.toY.toInt())}',
-                          const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: AppCard(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.lg, AppSpacing.md, AppSpacing.sm),
+              child: Column(children: [
+                SizedBox(
+                  height: 180,
+                  child: BarChart(
+                    BarChartData(
+                      maxY:       (data.dailyTotals.map((d) => d.total).reduce((a, b) => a > b ? a : b) * 1.2),
+                      barTouchData: BarTouchData(
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                            'Ngày ${group.x}\n${CurrencyFormatter.formatShort(rod.toY.toInt())}',
+                            TextStyle(
+                                color: context.cs.onPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        touchCallback: (_, response) {
+                          final idx = response?.spot?.touchedBarGroupIndex;
+                          if (idx != null && idx < data.dailyTotals.length) {
+                            onDayTap(data.dailyTotals[idx].day);
+                          }
+                        },
+                      ),
+                      barGroups: data.dailyTotals.asMap().entries.map((e) {
+                        final isSelected = e.value.day == selectedDay;
+                        return BarChartGroupData(
+                          x: e.key,
+                          barRods: [BarChartRodData(
+                            toY:          e.value.total.toDouble(),
+                            color:        isSelected
+                                ? context.cs.primary.withOpacity(0.45)
+                                : context.cs.primary,
+                            width:        10,
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          )],
+                        );
+                      }).toList(),
+                      titlesData: FlTitlesData(
+                        leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles:  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 22,
+                            getTitlesWidget: (v, _) {
+                              final idx = v.toInt();
+                              if (idx < 0 || idx >= data.dailyTotals.length) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                '${data.dailyTotals[idx].day}',
+                                style: context.text.bodySmall
+                                    ?.copyWith(fontSize: 9),
+                              );
+                            },
+                          ),
                         ),
                       ),
-                      touchCallback: (_, response) {
-                        final idx = response?.spot?.touchedBarGroupIndex;
-                        if (idx != null && idx < data.dailyTotals.length) {
-                          onDayTap(data.dailyTotals[idx].day);
-                        }
-                      },
+                      gridData:   const FlGridData(show: false),
+                      borderData: FlBorderData(show: false),
                     ),
-                    barGroups: data.dailyTotals.asMap().entries.map((e) {
-                      final isSelected = e.value.day == selectedDay;
-                      return BarChartGroupData(
-                        x: e.key,
-                        barRods: [BarChartRodData(
-                          toY:          e.value.total.toDouble(),
-                          color:        isSelected ? AppColors.accent : AppColors.primary,
-                          width:        10,
-                          borderRadius: BorderRadius.circular(4),
-                        )],
-                      );
-                    }).toList(),
-                    titlesData: FlTitlesData(
-                      leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles:  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 22,
-                          getTitlesWidget: (v, _) {
-                            final idx = v.toInt();
-                            if (idx < 0 || idx >= data.dailyTotals.length) {
-                              return const SizedBox.shrink();
-                            }
-                            return Text(
-                              '${data.dailyTotals[idx].day}',
-                              style: const TextStyle(
-                                  fontSize: 9, color: AppColors.textSecondary),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    gridData:   const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
                   ),
                 ),
-              ),
+                const SizedBox(height: AppSpacing.sm),
+                // Affordance cho tương tác ẩn (memo Y1): chạm cột → xem items.
+                Text(
+                  'Chạm vào cột để xem vật phẩm của ngày đó',
+                  key: const Key('historyScreen_chartHint'),
+                  style: context.text.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+              ]),
             ),
           ),
         ],
@@ -298,11 +333,10 @@ class _Body extends ConsumerWidget {
         // ── Selected day items ───────────────────────────────────────────
         if (selectedDay != null) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-            child: Text(
-              'Ngày $selectedDay tháng ${month.month}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            ),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.sm),
+            child: SectionHeader(
+              title: 'Ngày $selectedDay tháng ${month.month}'),
           ),
           _DayItemList(
             date: DateTime(month.year, month.month, selectedDay!),
@@ -310,27 +344,20 @@ class _Body extends ConsumerWidget {
           ),
         ],
 
-        if (data.totalSpent == 0)
+        if (data.monthTotal == 0)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('📭', style: TextStyle(fontSize: 48)),
-                SizedBox(height: 12),
-                Text('Tháng này chưa có chi tiêu',
-                    style: TextStyle(color: AppColors.textSecondary)),
-              ]),
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.huge),
+            child: EmptyState(
+              icon: Icons.inbox_outlined,
+              title: 'Tháng này chưa có chi tiêu',
+              message: 'Chuyển qua tháng khác hoặc ghi nhanh món mới nhé!',
             ),
           ),
 
-        const SizedBox(height: 32),
+        const SizedBox(height: AppSpacing.xxxl),
       ]),
     );
   }
-}
-
-extension on _MonthData {
-  int get totalSpent => monthTotal;
 }
 
 // ── Day item list ─────────────────────────────────────────────────────────────
@@ -345,33 +372,32 @@ class _DayItemList extends ConsumerWidget {
     final async = ref.watch(_dayItemsProvider(date));
     return async.when(
       loading: () => const Padding(
-        padding: EdgeInsets.all(24),
-        child:   Center(child: CircularProgressIndicator()),
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: SkeletonList(itemCount: 2, itemHeight: 64),
       ),
-      error: (e, _) => Text('Lỗi: $e'),
+      // Không còn 'Lỗi: $e' — ErrorState compact + Thử lại.
+      error: (_, __) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: ErrorState(
+          onRetry: () => ref.invalidate(_dayItemsProvider(date)),
+        ),
+      ),
       data: (items) => Column(
         children: items.map((item) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Card(
-            elevation: 0,
-            color:     Colors.white,
-            shape:     RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+          child: AppCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: AppColors.primaryLight,
+                backgroundColor: context.snap.tintPrimary,
                 child: Text(item.categoryIcon,
                     style: const TextStyle(fontSize: 18)),
               ),
-              title:    Text(item.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              title:    Text(item.name, style: context.text.titleSmall),
               subtitle: Text(DateHelper.formatTime(item.createdAt),
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              trailing: Text(
-                CurrencyFormatter.format(item.price),
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color:      AppColors.primary),
-              ),
+                  style: context.text.bodySmall),
+              trailing: MoneyText(amount: item.price, colored: true),
             ),
           ),
         )).toList(),

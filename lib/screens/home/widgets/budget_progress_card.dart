@@ -1,68 +1,133 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/currency_formatter.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_dimens.dart';
+import '../../../core/theme/app_shadows.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/theme/snap_colors.dart';
+import '../../../core/utils/currency_formatter.dart';
+import '../../../widgets/ui/money_text.dart';
+
+/// Hero card của Home theo hướng "Friendly Ledger" (memo redesign 02):
+/// DUY NHẤT 1 card gradient tím radius 20 mỗi màn — hero number "Còn lại"
+/// 34sp/w800 tabular figures + progress tổng quan.
+///
+/// Contract giữ nguyên với `budget_progress_card_test.dart`:
+/// - render `LinearProgressIndicator` với màu semantic theo ngưỡng
+///   80% / 100% (màu map qua `context.snap` — cùng hex `AppColors`);
+/// - chuỗi "Chưa đặt ngân sách" / "Đã dùng: ..." / "Còn lại: ..." / "%".
 class BudgetProgressCard extends StatelessWidget {
   final int spent;
   final int total;
 
   const BudgetProgressCard({required this.spent, required this.total, super.key});
 
-  Color get _barColor {
-    if (total == 0) return AppColors.success;
-    final r = spent / total;
-    if (r >= 1.0)  return AppColors.danger;
-    if (r >= 0.80) return AppColors.warning;
-    return AppColors.success;
-  }
+  double get _rawRatio => total > 0 ? spent / total : 0.0;
+  double get _ratio => _rawRatio.toDouble().clamp(0.0, 1.0);
+  int get _pct => total > 0 ? (spent / total * 100).round() : 0;
+  int get _remaining => (total - spent).clamp(0, total);
 
-  double get _ratio => total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
-  int    get _pct   => total > 0 ? (spent / total * 100).round()   : 0;
+  /// Hero number: "Còn lại: 60.000đ" ở 34sp/w800 tabular figures.
+  /// Chưa đặt ngân sách → hiển thị text thay cho số.
+  Widget _heroNumber(BuildContext context) {
+    if (total <= 0) {
+      return Text(
+        'Chưa đặt ngân sách',
+        key: const Key('budgetProgressCard_remaining'),
+        style: context.text.titleMedium?.copyWith(color: Colors.white),
+      );
+    }
+    return Text(
+      'Còn lại: ${CurrencyFormatter.format(_remaining)}',
+      key: const Key('budgetProgressCard_remaining'),
+      style: AppTypography.moneyOf(context.text, size: 34, color: Colors.white)
+          .copyWith(fontWeight: FontWeight.w800),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.snap;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final barColor = colors.colorFor(budgetLevelFromRatio(_rawRatio));
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 2))],
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, AppColors.primaryDark],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        // Dark mode bỏ glow, dùng shadow đậm hơn (memo 1.3).
+        boxShadow: dark ? AppShadows.cardDark : AppShadows.glowPrimary,
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('💰 Ngân sách hôm nay',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: _barColor.withOpacity(0.12), borderRadius: BorderRadius.circular(100)),
-            child: Text('$_pct%', style: TextStyle(color: _barColor, fontWeight: FontWeight.w700, fontSize: 13)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Ngân sách hôm nay',
+                style: context.text.titleSmall?.copyWith(color: Colors.white70),
+              ),
+              Container(
+                key: const Key('budgetProgressCard_percent'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  '$_pct%',
+                  style: context.text.labelLarge?.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(100),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: _ratio),
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.easeOut,
-            builder: (_, value, __) => LinearProgressIndicator(
-              value: value,
-              minHeight: 10,
-              color: _barColor,
-              backgroundColor: _barColor.withOpacity(0.12),
+          const SizedBox(height: AppSpacing.sm),
+          _heroNumber(context),
+          const SizedBox(height: AppSpacing.lg),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: _ratio),
+              duration: AppDurations.slow,
+              curve: Curves.easeOut,
+              builder: (_, value, __) => LinearProgressIndicator(
+                key: const Key('budgetProgressCard_indicator'),
+                value: value,
+                minHeight: 10,
+                color: barColor,
+                backgroundColor: barColor.withOpacity(0.12),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('Đã dùng: ${CurrencyFormatter.format(spent)}',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          Text(total > 0
-              ? 'Còn lại: ${CurrencyFormatter.format((total - spent).clamp(0, total))}'
-              : 'Chưa đặt ngân sách',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        ]),
-      ]),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Text(
+                'Đã dùng:',
+                style: context.text.bodySmall?.copyWith(color: Colors.white70),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              MoneyText(
+                amount: spent,
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

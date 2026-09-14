@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shopsnap/core/theme/app_colors.dart';
+import 'package:shopsnap/core/theme/app_dimens.dart';
+import 'package:shopsnap/core/theme/snap_colors.dart';
 
 class ScanOverlay extends StatefulWidget {
   final bool isSuccess;
@@ -29,7 +30,11 @@ class _ScanOverlayState extends State<ScanOverlay> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = widget.isSuccess ? AppColors.success : AppColors.primary;
+    // Màu qua token (context.snap có fallback cho bare MaterialApp test) —
+    // overlay nằm TRÊN camera nên nền đen dim giữ nguyên (chức năng, không
+    // phải surface theo theme).
+    final colors = context.snap;
+    final activeColor = widget.isSuccess ? colors.success : context.cs.primary;
 
     return LayoutBuilder(builder: (context, constraints) {
       final w = constraints.maxWidth;
@@ -55,11 +60,11 @@ class _ScanOverlayState extends State<ScanOverlay> with SingleTickerProviderStat
             height: cutH,
             child: Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.success, width: 2.5),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: colors.success, width: 2.5),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.success.withOpacity(0.5),
+                    color: colors.success.withOpacity(0.5),
                     blurRadius: 16,
                     spreadRadius: 2,
                   ),

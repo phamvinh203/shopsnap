@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_dimens.dart';
+import '../../../core/theme/snap_colors.dart';
 import '../../../core/utils/api_error_messages.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/barcode_provider.dart';
 import '../../../services/barcode_contribute_service.dart';
+import '../../../widgets/ui/ui.dart';
 
 /// Sheet đóng góp dữ liệu barcode (Wave 6 — POST /barcode/contribute).
 ///
@@ -79,6 +81,12 @@ class _BarcodeContributeSheetState extends ConsumerState<BarcodeContributeSheet>
       setState(() => _error = 'Vui lòng nhập tên sản phẩm');
       return;
     }
+    // AppTextField không hỗ trợ maxLength → giữ cap 255 ký tự của DTO tại đây
+    // (trước đây dùng TextField.maxLength).
+    if (name.length > 255) {
+      setState(() => _error = 'Tên sản phẩm tối đa 255 ký tự');
+      return;
+    }
 
     final authenticated = ref.read(authStateProvider).value?.isAuthenticated == true;
     if (!authenticated) {
@@ -122,105 +130,118 @@ class _BarcodeContributeSheetState extends ConsumerState<BarcodeContributeSheet>
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-      decoration: const BoxDecoration(
-        color:        Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(child: Container(
-            width: 40, height: 4,
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2)),
-          )),
-          const Text('Đóng góp thông tin sản phẩm',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 4),
-          const Text(
-            'Giúp cộng đồng ShopSnap biết sản phẩm của mã này',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-
-          // Barcode — chỉ hiển thị, không sửa
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.bgCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
+  Widget build(BuildContext context) {
+    final colors = context.snap;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl, AppSpacing.md, AppSpacing.xl, AppSpacing.xxl + 4),
+        // Surface qua theme (dark-mode ready) thay Colors.white hardcode.
+        decoration: BoxDecoration(
+          color: context.cs.surface,
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.sheet)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+              decoration: BoxDecoration(
+                  color: colors.hairline,
+                  borderRadius: BorderRadius.circular(AppRadius.pill)),
+            )),
+            Text('Đóng góp thông tin sản phẩm', style: context.text.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Giúp cộng đồng ShopSnap biết sản phẩm của mã này',
+              style: context.text.bodySmall,
             ),
-            child: Row(children: [
-              const Icon(Icons.qr_code_2, size: 18, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(widget.barcode,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13),
-                    overflow: TextOverflow.ellipsis),
+            const SizedBox(height: AppSpacing.lg),
+
+            // Barcode — chỉ hiển thị, không sửa
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: AppSpacing.md - 2),
+              decoration: BoxDecoration(
+                color: context.cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(AppRadius.sm + 2),
+                border: Border.all(color: colors.hairline),
               ),
-            ]),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Tên sản phẩm — bắt buộc (backend yêu cầu)
-          const Text('Tên sản phẩm *',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _nameCtrl,
-            maxLength: 255,
-            autofocus: (widget.initialName ?? '').isEmpty,
-            textCapitalization: TextCapitalization.sentences,
-            buildCounter: (_, {required currentLength, required isFocused, int? maxLength}) => null,
-            decoration: InputDecoration(
-              hintText:   'VD: Sữa tươi Vinamilk 1L...',
-              prefixIcon: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary),
-              errorText:  _error,
+              child: Row(children: [
+                Icon(Icons.qr_code_2, size: 18, color: context.cs.primary),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(widget.barcode,
+                      style: context.text.titleSmall?.copyWith(fontSize: 13),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ]),
             ),
-          ),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.md),
 
-          // Giá tiền — tuỳ chọn
-          const Text('Giá tiền (đ) — tuỳ chọn',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _priceCtrl,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              hintText:   '0',
-              prefixIcon: Icon(Icons.attach_money, color: AppColors.primary),
-              suffixText: 'đ',
+            // Tên sản phẩm — bắt buộc (backend yêu cầu)
+            Text('Tên sản phẩm *', style: context.text.titleSmall),
+            const SizedBox(height: AppSpacing.xs + 2),
+            AppTextField(
+              key: const Key('contributeSheet_nameField'),
+              controller: _nameCtrl,
+              autofocus: (widget.initialName ?? '').isEmpty,
+              textCapitalization: TextCapitalization.sentences,
+              prefixIcon: Icons.shopping_bag_outlined,
+              hint: 'VD: Sữa tươi Vinamilk 1L...',
             ),
-          ),
 
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _submit,
-              child: _saving
-                  ? const SizedBox(
-                      width: 22, height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : const Text('Gửi đóng góp'),
+            // Lỗi validate/server — hiện rõ dưới field thay vì nuốt im lặng
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Row(children: [
+                Icon(Icons.error_outline, size: 16, color: colors.danger),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    _error!,
+                    key: const Key('contributeSheet_error'),
+                    style: context.text.bodySmall
+                        ?.copyWith(color: colors.danger),
+                  ),
+                ),
+              ]),
+            ],
+
+            const SizedBox(height: AppSpacing.sm),
+
+            // Giá tiền — tuỳ chọn
+            Text('Giá tiền (đ) — tuỳ chọn', style: context.text.titleSmall),
+            const SizedBox(height: AppSpacing.xs + 2),
+            AppTextField(
+              key: const Key('contributeSheet_priceField'),
+              controller: _priceCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              prefixIcon: Icons.attach_money,
+              suffix: const Padding(
+                padding: EdgeInsets.only(right: AppSpacing.md),
+                child: Text('đ'),
+              ),
+              hint: '0',
             ),
-          ),
-        ],
+
+            const SizedBox(height: AppSpacing.xl),
+            PrimaryButton(
+              key: const Key('contributeSheet_submitButton'),
+              label: 'Gửi đóng góp',
+              loading: _saving,
+              onPressed: _submit,
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

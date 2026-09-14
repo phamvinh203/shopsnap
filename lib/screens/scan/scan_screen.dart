@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:shopsnap/core/theme/app_colors.dart';
+import 'package:shopsnap/core/theme/app_dimens.dart';
+import 'package:shopsnap/core/theme/snap_colors.dart';
 import 'package:shopsnap/database/daos/barcode_cache_dao.dart';
 import 'package:shopsnap/providers/auth_provider.dart';
 import 'package:shopsnap/providers/database_provider.dart';
 import 'package:shopsnap/services/barcode_contribute_service.dart';
 import 'package:shopsnap/services/barcode_service.dart';
+import 'package:shopsnap/widgets/ui/ui.dart';
 import 'widgets/barcode_contribute_sheet.dart';
 import 'widgets/scan_overlay.dart';
 
@@ -72,20 +74,22 @@ class _ScanScreenState extends State<ScanScreen> {
         ScanOverlay(isSuccess: _isSuccessFlash),
         // Top bar
         SafeArea(child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
           child: Row(children: [
             _CircleBtn(
               icon: Icons.arrow_back,
               onTap: () => Navigator.pop(context),
             ),
             const Spacer(),
-            const Text('Scan barcode', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+            // Glossary R14: "Quét mã vạch" thay "Scan barcode".
+            const Text('Quét mã vạch', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
             const Spacer(),
             _CircleBtn(
               icon: Icons.flip_camera_ios_outlined,
               onTap: () => _controller.switchCamera(),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppSpacing.md - 2),
             _CircleBtn(
               icon: _torchOn ? Icons.flash_on : Icons.flash_off,
               onTap: () { _controller.toggleTorch(); setState(() => _torchOn = !_torchOn); },
@@ -98,19 +102,19 @@ class _ScanScreenState extends State<ScanScreen> {
           left: 0, right: 0,
           child: Column(children: [
             const Text('Đưa barcode vào khung để quét', style: TextStyle(color: Colors.white70, fontSize: 14)),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             GestureDetector(
               onTap: () => _showManualInput(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md - 2),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                   border: Border.all(color: Colors.white30),
                 ),
                 child: const Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.keyboard_outlined, color: Colors.white70, size: 16),
-                  SizedBox(width: 6),
+                  SizedBox(width: AppSpacing.xs + 2),
                   Text('Nhập mã thủ công', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 ]),
               ),
@@ -119,7 +123,7 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
         // Processing indicator
         if (_processing)
-          const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          Center(child: CircularProgressIndicator(color: context.cs.primary)),
       ]),
     );
   }
@@ -196,43 +200,38 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
     );
     if (contributed == null || !mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          const Text('Cảm ơn bạn đã đóng góp!'),
-          if (contributed.message.isNotEmpty)
-            Text(contributed.message, style: const TextStyle(fontSize: 12)),
-        ]),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(12),
-        duration: const Duration(seconds: 3),
-      ),
+    AppSnackBar.show(
+      context: context,
+      message: contributed.message.isEmpty
+          ? 'Cảm ơn bạn đã đóng góp!'
+          : 'Cảm ơn bạn đã đóng góp! ${contributed.message}',
+      tone: AppSnackBarTone.success,
+      duration: const Duration(seconds: 3),
     );
     Navigator.pop(context, {'barcode': widget.barcode, 'contributed': true});
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.snap;
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(color: AppColors.divider, borderRadius: BorderRadius.circular(2))),
         if (_loading) ...[
-          const CircularProgressIndicator(color: AppColors.primary),
-          const SizedBox(height: 12),
-          const Text('Đang tìm sản phẩm...', style: TextStyle(color: AppColors.textSecondary)),
+          const CircularProgressIndicator(strokeWidth: 2.5),
+          const SizedBox(height: AppSpacing.md),
+          Text('Đang tìm sản phẩm...', style: context.text.bodySmall),
         ] else if (_result == null) ...[
-          const Icon(Icons.search_off, size: 48, color: AppColors.textSecondary),
-          const SizedBox(height: 8),
-          const Text('Không tìm thấy sản phẩm', style: TextStyle(fontWeight: FontWeight.w600)),
-          Text('Barcode: ${widget.barcode}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-          const SizedBox(height: 16),
-          ElevatedButton(
+          Icon(Icons.search_off, size: 48, color: context.cs.onSurfaceVariant),
+          const SizedBox(height: AppSpacing.sm),
+          Text('Không tìm thấy sản phẩm', style: context.text.titleMedium),
+          Text('Barcode: ${widget.barcode}',
+              style: context.text.bodySmall, textAlign: TextAlign.center),
+          const SizedBox(height: AppSpacing.lg),
+          PrimaryButton(
+            key: const Key('scanSheet_manualInputButton'),
+            label: 'Nhập thủ công',
             onPressed: () => Navigator.pop(context, {'barcode': widget.barcode}),
-            child: const Text('Nhập thủ công'),
           ),
           // Wave 6 — đóng góp dữ liệu cho mã chưa có (ẩn khi chưa đăng nhập:
           // endpoint cần JWT, không hiện hint thừa cho khách vãng lai)
@@ -243,14 +242,13 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
               label: const Text('Đóng góp thông tin'),
             ),
         ] else ...[
-          const Icon(Icons.check_circle, color: AppColors.success, size: 40),
-          const SizedBox(height: 8),
+          Icon(Icons.check_circle, color: colors.success, size: 40),
+          const SizedBox(height: AppSpacing.sm),
           Text(_result!.productName,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-              textAlign: TextAlign.center),
+              style: context.text.titleMedium, textAlign: TextAlign.center),
           if (_result!.brand != null)
-            Text(_result!.brand!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          const SizedBox(height: 6),
+            Text(_result!.brand!, style: context.text.bodySmall),
+          const SizedBox(height: AppSpacing.xs + 2),
           Chip(
             avatar: Icon(
               _result!.source == BarcodeSource.localHistory
@@ -259,7 +257,7 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
                       ? Icons.public
                       : Icons.cloud_done_outlined),
               size: 16,
-              color: AppColors.primary,
+              color: context.cs.primary,
             ),
             label: Text(
               _result!.source == BarcodeSource.localHistory
@@ -267,35 +265,35 @@ class _ResultSheetState extends ConsumerState<_ResultSheet> {
                   : (_result!.source == BarcodeSource.openFoodFacts
                       ? 'Open Food Facts'
                       : 'ShopSnap Cloud'),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              style: context.text.labelLarge?.copyWith(fontSize: 11),
             ),
-            backgroundColor: AppColors.primaryLight,
+            backgroundColor: colors.tintPrimary,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.xl),
           Row(children: [
             Expanded(
-              child: OutlinedButton(
+              child: SecondaryButton(
                 onPressed: () {
                   widget.controller.start();
                   Navigator.pop(context);
                 },
-                child: const Text('Quét lại'),
+                label: 'Quét lại',
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: ElevatedButton(
+              child: PrimaryButton(
                 onPressed: () => Navigator.pop(context, {
                   'name':        _result!.productName,
                   'barcode':     widget.barcode,
                   'category_id': _result!.categoryId,
                 }),
-                child: const Text('Xác nhận'),
+                label: 'Xác nhận',
               ),
             ),
           ]),
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
       ]),
     );
   }

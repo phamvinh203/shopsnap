@@ -9,6 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/snap_colors.dart';
+import '../../core/utils/api_error_messages.dart';
+import '../../widgets/ui/ui.dart';
 import 'widgets/price_sticker_widget.dart';
 
 // ── Data class ────────────────────────────────────────────────────────────────
@@ -80,10 +84,9 @@ class _ArStickerScreenState extends State<ArStickerScreen> {
   // ── Actions ────────────────────────────────────────────────────────────────
 
   void _showAddSheet([_StickerData? editing]) {
-    showModalBottomSheet(
-      context:          context,
-      isScrollControlled: true,
-      backgroundColor:  Colors.transparent,
+    AppBottomSheet.show<void>(
+      context: context,
+      title: editing != null ? 'Sửa sticker' : 'Thêm sticker',
       builder: (_) => _StickerSheet(
         initialLabel: editing?.label,
         initialColor: editing?.color,
@@ -128,11 +131,11 @@ class _ArStickerScreenState extends State<ArStickerScreen> {
       if (mounted) context.pop<String>(path);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:         Text('Lỗi chụp ảnh: $e'),
-            backgroundColor: AppColors.danger,
-          ),
+        // Không còn 'Lỗi chụp ảnh: $e' raw — microcopy tiếng Việt.
+        AppSnackBar.show(
+          context: context,
+          message: apiErrorMessage(e),
+          tone: AppSnackBarTone.danger,
         );
       }
     } finally {
@@ -174,16 +177,17 @@ class _ArStickerScreenState extends State<ArStickerScreen> {
               const Spacer(),
               if (_stickers.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                  margin:  const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md - 2, vertical: 3),
+                  margin:  const EdgeInsets.only(right: AppSpacing.sm),
                   decoration: BoxDecoration(
-                    color:        AppColors.primary,
-                    borderRadius: BorderRadius.circular(99),
+                    color:        context.cs.primary,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Text(
                     '${_stickers.length} sticker',
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                    style: context.text.labelLarge
+                        ?.copyWith(fontSize: 11, color: context.cs.onPrimary),
                   ),
                 ),
               _CircleBtn(
@@ -283,12 +287,10 @@ class _ArStickerScreenState extends State<ArStickerScreen> {
           onDoubleTap: ()  => _showAddSheet(s),
           onLongPress: ()  {
             setState(() => _stickers.remove(s));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content:  Text('Đã xoá sticker'),
-                duration: Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating,
-              ),
+            AppSnackBar.show(
+              context: context,
+              message: 'Đã xoá sticker',
+              duration: const Duration(seconds: 1),
             );
           },
           child: PriceStickerWidget(label: s.label, color: s.color),
@@ -297,6 +299,7 @@ class _ArStickerScreenState extends State<ArStickerScreen> {
 }
 
 // ── Add/Edit sticker bottom sheet ─────────────────────────────────────────────
+// Content-only: handle + title + scroll do AppBottomSheet.show lo (caller).
 
 class _StickerSheet extends StatefulWidget {
   final String?  initialLabel;
@@ -318,6 +321,7 @@ class _StickerSheet extends StatefulWidget {
 class _StickerSheetState extends State<_StickerSheet> {
   late final TextEditingController _ctrl;
   late Color _selected;
+  String? _error;
 
   @override
   void initState() {
@@ -333,81 +337,68 @@ class _StickerSheetState extends State<_StickerSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(
-          padding:    const EdgeInsets.fromLTRB(20, 12, 20, 28),
-          decoration: const BoxDecoration(
-            color:        Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppTextField(
+            key: const Key('arSticker_labelField'),
+            controller: _ctrl,
+            autofocus: true,
+            prefixIcon: Icons.local_offer_outlined,
+            hint: 'VD: 45,000đ hoặc -50%',
           ),
-          child: Column(
-            mainAxisSize:      MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color:        Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+          // FIX: trước đây label rỗng thì `return;` im lặng — giờ báo lỗi rõ.
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _error!,
+              key: const Key('arSticker_error'),
+              style: context.text.bodySmall
+                  ?.copyWith(color: context.snap.danger),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          Text('Màu', style: context.text.titleSmall),
+          const SizedBox(height: AppSpacing.md - 2),
+          Row(
+            children: widget.palette.map((c) => GestureDetector(
+              onTap: () => setState(() => _selected = c),
+              child: AnimatedContainer(
+                duration: AppDurations.fast,
+                width: 36, height: 36,
+                margin: const EdgeInsets.only(right: AppSpacing.md - 2),
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: _selected == c
+                      ? Border.all(color: Colors.white, width: 3)
+                      : null,
+                  boxShadow: _selected == c
+                      ? [BoxShadow(color: c.withOpacity(0.7), blurRadius: 10, spreadRadius: 2)]
+                      : null,
                 ),
               ),
-              Text(
-                widget.initialLabel != null ? 'Sửa sticker' : 'Thêm sticker',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _ctrl,
-                autofocus:  true,
-                decoration: const InputDecoration(
-                  hintText:   'VD: 45,000đ hoặc -50%',
-                  prefixIcon: Icon(Icons.local_offer_outlined, color: AppColors.primary),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Màu', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 10),
-              Row(
-                children: widget.palette.map((c) => GestureDetector(
-                  onTap: () => setState(() => _selected = c),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 36, height: 36,
-                    margin: const EdgeInsets.only(right: 10),
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: _selected == c
-                          ? Border.all(color: Colors.white, width: 3)
-                          : null,
-                      boxShadow: _selected == c
-                          ? [BoxShadow(color: c.withOpacity(0.7), blurRadius: 10, spreadRadius: 2)]
-                          : null,
-                    ),
-                  ),
-                )).toList(),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    final text = _ctrl.text.trim();
-                    if (text.isEmpty) return;
-                    widget.onConfirm(text, _selected);
-                    Navigator.pop(context);
-                  },
-                  child: Text(widget.initialLabel != null ? 'Cập nhật' : 'Thêm sticker'),
-                ),
-              ),
-            ],
+            )).toList(),
           ),
-        ),
+          const SizedBox(height: AppSpacing.xl),
+          PrimaryButton(
+            key: const Key('arSticker_submitButton'),
+            label: widget.initialLabel != null ? 'Cập nhật' : 'Thêm sticker',
+            onPressed: _confirm,
+          ),
+        ],
       );
+
+  void _confirm() {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'Vui lòng nhập nội dung sticker');
+      return;
+    }
+    widget.onConfirm(text, _selected);
+    Navigator.pop(context);
+  }
 }
 
 // ── Circle icon button ────────────────────────────────────────────────────────

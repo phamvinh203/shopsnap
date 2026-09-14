@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/theme/app_colors.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/theme/app_dimens.dart';
+import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
-import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
 import '../../models/item_model.dart';
 import '../../providers/items_provider.dart';
@@ -10,11 +12,14 @@ import '../../providers/budget_provider.dart';
 import '../../providers/categories_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../providers/update_provider.dart';
+import '../../providers/all_budgets_provider.dart';
 import '../../services/sync_engine.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/update_dialog.dart';
 import 'widgets/budget_progress_card.dart';
 import 'widgets/category_chips_row.dart';
 import 'widgets/item_card.dart';
+import 'widgets/item_detail_sheet.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -48,11 +53,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _checkAppUpdateManually() async {
     final notifier = ref.read(appUpdateProvider.notifier);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang kiểm tra bản cập nhật mới...'),
-        duration: Duration(seconds: 1),
-      ),
+    AppSnackBar.show(
+      context: context,
+      message: 'Đang kiểm tra bản cập nhật mới...',
+      duration: const Duration(seconds: 1),
     );
 
     try {
@@ -67,21 +71,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onDownload: (url) => notifier.download(url),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Bạn đang dùng phiên bản mới nhất (v${info.currentVersion})!'),
-            backgroundColor: AppColors.success,
-            duration: const Duration(seconds: 2),
-          ),
+        AppSnackBar.show(
+          context: context,
+          message: 'Bạn đang dùng phiên bản mới nhất (v${info.currentVersion})!',
+          tone: AppSnackBarTone.success,
+          duration: const Duration(seconds: 2),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể kiểm tra cập nhật: $e'),
-          backgroundColor: AppColors.danger,
-        ),
+      // Không hiện raw exception — map sang microcopy tiếng Việt.
+      AppSnackBar.show(
+        context: context,
+        message: apiErrorMessage(e),
+        tone: AppSnackBarTone.danger,
       );
     }
   }
@@ -99,7 +102,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.primary,
+          color: context.cs.primary,
           onRefresh: () async {
             ref.invalidate(itemsProvider);
             await ref.read(syncProvider.notifier).triggerSync();
@@ -109,16 +112,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // ── Header ──────────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.md),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Xin chào! 👋',
-                            style: Theme.of(context).textTheme.headlineMedium),
+                        Text('Xin chào! 👋', style: context.text.headlineMedium),
                         const SizedBox(height: 2),
                         Text(DateHelper.formatDate(selectedDate),
-                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                            style: context.text.bodySmall),
                       ]),
                       Row(
                         children: [
@@ -129,12 +132,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     ? 'Có ${syncState.pendingCount} thay đổi chờ đồng bộ'
                                     : 'Dữ liệu đã đồng bộ đám mây'),
                             icon: syncState.isSyncing
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: AppColors.primary,
+                                      color: context.cs.primary,
                                     ),
                                   )
                                 : Badge(
@@ -145,20 +148,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                           ? Icons.cloud_upload_outlined
                                           : Icons.cloud_done_outlined,
                                       color: syncState.status == SyncStatus.error
-                                          ? Colors.orange
-                                          : (syncState.pendingCount > 0 ? AppColors.primary : Colors.green),
+                                          ? context.snap.warning
+                                          : (syncState.pendingCount > 0
+                                              ? context.cs.primary
+                                              : context.snap.success),
                                     ),
                                   ),
                             onPressed: () async {
                               final res = await ref.read(syncProvider.notifier).triggerSync();
                               if (context.mounted && res != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(res.isSuccess
-                                        ? 'Đồng bộ xong (đẩy: ${res.pushedCount}, kéo: ${res.pulledCount})'
-                                        : (res.errorMessage ?? 'Đồng bộ thất bại')),
-                                    duration: const Duration(seconds: 2),
-                                  ),
+                                AppSnackBar.show(
+                                  context: context,
+                                  message: res.isSuccess
+                                      ? 'Đồng bộ xong (đẩy: ${res.pushedCount}, kéo: ${res.pulledCount})'
+                                      : (res.errorMessage ?? 'Đồng bộ thất bại'),
+                                  tone: res.isSuccess
+                                      ? AppSnackBarTone.success
+                                      : AppSnackBarTone.danger,
+                                  duration: const Duration(seconds: 2),
                                 );
                               }
                             },
@@ -169,14 +176,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 : 'Kiểm tra bản cập nhật',
                             icon: Badge(
                               isLabelVisible: updateInfo?.hasUpdate == true,
-                              backgroundColor: AppColors.danger,
+                              backgroundColor: context.snap.danger,
                               child: Icon(
                                 updateInfo?.hasUpdate == true
                                     ? Icons.system_update_rounded
                                     : Icons.notifications_outlined,
                                 color: updateInfo?.hasUpdate == true
-                                    ? AppColors.primary
-                                    : AppColors.textSecondary,
+                                    ? context.cs.primary
+                                    : context.cs.onSurfaceVariant,
                               ),
                             ),
                             onPressed: _checkAppUpdateManually,
@@ -192,88 +199,107 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (updateInfo != null && updateInfo.hasUpdate)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Material(
-                      color: AppColors.primaryLight,
-                      borderRadius: BorderRadius.circular(14),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          UpdateDialog.show(
-                            context,
-                            info: updateInfo,
-                            onDismiss: () => ref.read(appUpdateProvider.notifier).dismiss(),
-                            onDownload: (url) => ref.read(appUpdateProvider.notifier).download(url),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(
-                            children: [
-                              const Text('🚀', style: TextStyle(fontSize: 20)),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Đã có phiên bản v${updateInfo.latestVersion}!',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                        color: AppColors.primaryDark,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    const Text(
-                                      'Nhấn để xem chi tiết và cập nhật',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Text(
-                                  'Cập nhật',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+                    child: AppCard(
+                      tint: context.snap.tintPrimary,
+                      hairline: false,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+                      onTap: () {
+                        UpdateDialog.show(
+                          context,
+                          info: updateInfo,
+                          onDismiss: () => ref.read(appUpdateProvider.notifier).dismiss(),
+                          onDownload: (url) => ref.read(appUpdateProvider.notifier).download(url),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: context.cs.primary.withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.rocket_launch_outlined,
+                              color: context.snap.onTintPrimary,
+                              size: 20,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Đã có phiên bản v${updateInfo.latestVersion}!',
+                                  style: context.text.titleSmall
+                                      ?.copyWith(color: context.snap.onTintPrimary),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Nhấn để xem chi tiết và cập nhật',
+                                  style: context.text.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                            decoration: BoxDecoration(
+                              color: context.snap.onTintPrimary,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                            ),
+                            child: Text(
+                              'Cập nhật',
+                              style: context.text.labelLarge?.copyWith(
+                                fontSize: 12,
+                                // Badge nền onTintPrimary (#4B44CC light /
+                                // #8B85FF dark) → chữ đọc onPrimary thay vì
+                                // white hardcode (white chai contrast kém ở
+                                // dark, light vẫn trắng y cũ).
+                                color: context.cs.onPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
 
-              // ── Budget card ──────────────────────────────────────────────
+              // ── Hero card: ngân sách hôm nay (gradient tím duy nhất) ────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                   child: budgetAsync.when(
                     data: (status) => BudgetProgressCard(
                       spent: status?.spent ?? 0,
                       total: status?.budget.amount ?? 0,
                     ),
-                    loading: () => const _SkeletonCard(height: 100),
-                    error:   (_, __) => const SizedBox.shrink(),
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                      child: LoadingSkeleton(
+                          width: double.infinity, height: 172, radius: AppRadius.xl),
+                    ),
+                    // Lỗi không còn bị nuốt: hiện ErrorState + Thử lại
+                    error: (e, _) => ErrorState(
+                      message: apiErrorMessage(e),
+                      onRetry: () {
+                        ref.invalidate(allBudgetsProvider);
+                        ref.invalidate(budgetStatusProvider);
+                      },
+                    ),
                   ),
                 ),
               ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
 
               // ── Category chips ──────────────────────────────────────────
               SliverToBoxAdapter(
@@ -283,39 +309,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     selected:   _filterCategory,
                     onSelected: (id) => setState(() => _filterCategory = id),
                   ),
-                  loading: () => const SizedBox(height: 36),
-                  error:   (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-              // ── Section header ──────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: itemsAsync.when(
-                    data: (items) {
-                      final filtered = _applyFilter(items);
-                      final total    = filtered.fold(0, (s, i) => s + i.price);
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  loading: () => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: SizedBox(
+                      height: 38,
+                      child: Row(
                         children: [
-                          Text('Hôm nay · ${filtered.length} items',
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          Text(CurrencyFormatter.format(total),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.primary)),
+                          for (var i = 0; i < 3; i++)
+                            const Padding(
+                              padding: EdgeInsets.only(right: AppSpacing.sm),
+                              child: LoadingSkeleton(width: 88, height: 34, radius: AppRadius.sm),
+                            ),
                         ],
-                      );
-                    },
-                    loading: () => const SizedBox.shrink(),
-                    error:   (_, __) => const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                  // Lỗi không còn bị nuốt: hiện ErrorState + Thử lại
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: ErrorState(
+                      message: apiErrorMessage(e),
+                      onRetry: () => ref.invalidate(categoriesProvider),
+                    ),
                   ),
                 ),
               ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
+
+              // ── Section header ──────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  child: itemsAsync.when(
+                    data: (items) {
+                      final filtered = _applyFilter(items);
+                      final total    = filtered.fold(0, (s, i) => s + i.price);
+                      return SectionHeader(
+                        title: 'Hôm nay · ${filtered.length} mặt hàng',
+                        amount: total,
+                      );
+                    },
+                    loading: () => const Align(
+                      alignment: Alignment.centerLeft,
+                      child: LoadingSkeleton(width: 180, height: 20),
+                    ),
+                    // Lỗi không còn bị nuốt: hiện ErrorState + Thử lại
+                    error: (e, _) => ErrorState(
+                      message: apiErrorMessage(e),
+                      onRetry: () => ref.invalidate(itemsProvider),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
 
               // ── Item list ───────────────────────────────────────────────
               itemsAsync.when(
@@ -324,45 +372,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   if (filtered.isEmpty) {
                     return SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Text('🛍️', style: TextStyle(fontSize: 48)),
-                          const SizedBox(height: 12),
-                          Text('Chưa có gì hôm nay',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 4),
-                          const Text('Nhấn + để thêm vật phẩm đầu tiên',
-                              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                        ]),
+                      child: EmptyState(
+                        icon: Icons.shopping_bag_outlined,
+                        title: 'Chưa có gì hôm nay',
+                        message: 'Ghi nhanh món vừa mua để theo dõi chi tiêu nhé!',
+                        actionLabel: 'Thêm mặt hàng đầu tiên',
+                        onAction: () => context.push('/add'),
                       ),
                     );
                   }
                   return SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg, 0, AppSpacing.lg, 100),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) => ItemCard(
-                          item:     filtered[index],
-                          onDelete: () => _deleteItem(filtered[index]),
-                          onTap:    () {},
-                        ),
+                        (context, index) {
+                          final item = filtered[index];
+                          // Sửa bug tap chết: mở bottom-sheet sửa nhanh (H1).
+                          return ItemCard(
+                            key: Key('itemCard_${item.id}'),
+                            item:     item,
+                            onDelete: () => _deleteItem(item),
+                            onTap:    () => ItemDetailSheet.show(context, item),
+                          );
+                        },
                         childCount: filtered.length,
                       ),
                     ),
                   );
                 },
-                loading: () => SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (_, __) => const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: _SkeletonCard(height: 72),
-                    ),
-                    childCount: 5,
+                loading: () => const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: SkeletonList(itemCount: 5, itemHeight: 72),
                   ),
                 ),
-                error: (e, _) => SliverToBoxAdapter(
-                  child: Center(child: Text('Lỗi: $e')),
-                ),
+                // Lỗi itemsProvider đã hiển thị ErrorState + "Thử lại" ở
+                // section header ngay phía trên (cùng 1 provider — không lặp
+                // 2 ErrorState chồng nhau).
+                error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
               ),
             ],
           ),
@@ -383,30 +431,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await ref.read(itemsProvider.notifier).deleteItem(item.id);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:  Text(apiErrorMessage(e)),
-          backgroundColor: AppColors.danger,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin:   const EdgeInsets.all(12),
-        ));
+        AppSnackBar.show(
+          context: context,
+          message: apiErrorMessage(e),
+          tone: AppSnackBarTone.danger,
+        );
       }
     }
-  }
-}
-
-class _SkeletonCard extends StatelessWidget {
-  final double height;
-  const _SkeletonCard({required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.divider.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-      ),
-    );
   }
 }

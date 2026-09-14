@@ -26,7 +26,7 @@ void main() {
         initialItems: _items(),
         onChanged: (_) {},
       )));
-      expect(find.text('Thêm item'), findsOneWidget);
+      expect(find.text('Thêm mặt hàng'), findsOneWidget);
     });
 
     testWidgets('tapping "Thêm item" adds a new row', (tester) async {
@@ -35,7 +35,7 @@ void main() {
         initialItems: _items(),
         onChanged: (items) => changed = items,
       )));
-      await tester.tap(find.text('Thêm item'));
+      await tester.tap(find.text('Thêm mặt hàng'));
       await tester.pump();
       expect(changed.length, 3);
     });

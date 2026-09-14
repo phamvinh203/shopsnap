@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/snap_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 
 class PriceComparisonHint extends StatelessWidget {
@@ -16,6 +16,9 @@ class PriceComparisonHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chưa gõ giá (parse = 0) → không so sánh gì cả, tránh hint phản cảm tính
+    // "Lần trước: 85.000đ (−100%)" (audit I1 / AC4: hint chỉ hiện khi giá > 0).
+    if (currentPrice <= 0) return const SizedBox.shrink();
     if (lastPrice == null && avgPrice == null) return const SizedBox.shrink();
 
     final widgets = <Widget>[];
@@ -26,14 +29,16 @@ class PriceComparisonHint extends StatelessWidget {
       final isCheaper = diff <= 0;
       widgets.add(_HintChip(
         icon:  isCheaper ? Icons.arrow_downward : Icons.arrow_upward,
-        color: isCheaper ? AppColors.success     : AppColors.danger,
+        // Token theo brightness: light giữ đúng hex AppColors cũ, dark tự
+        // dùng bản success/danger sáng hơn (bảng memo redesign).
+        color: isCheaper ? context.snap.success : context.snap.danger,
         label: 'Lần trước: ${CurrencyFormatter.format(lastPrice!)}  (${isCheaper ? "-" : "+"}$pct%)',
       ));
     }
 
     if (avgPrice != null && avgPrice! > 0 && currentPrice <= avgPrice! * 0.90) {
-      widgets.add(const _HintChip(
-        icon: Icons.star_outline, color: AppColors.success, label: 'Giá tốt hơn trung bình!',
+      widgets.add(_HintChip(
+        icon: Icons.star_outline, color: context.snap.success, label: 'Giá tốt hơn trung bình!',
       ));
     }
 
