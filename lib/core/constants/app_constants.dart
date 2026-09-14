@@ -26,6 +26,6 @@ abstract class AppConstants {
   static String get backendBaseUrl => ApiConfig.baseUrl;
 
   // App Version & Update
-  static const appVersion = '1.0.2';
+  static const appVersion = '1.0.4';
   static const githubRepo = 'phamvinh203/shopsnap';
 }
