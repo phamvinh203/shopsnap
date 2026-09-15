@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_dimens.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
+import '../../core/utils/budget_insights.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../models/budget_model.dart';
 import '../../models/category_model.dart';
@@ -155,6 +156,22 @@ class _BudgetCard extends StatelessWidget {
     required this.onDelete,
   });
 
+  /// F-#3: insights cho budget này (category lẫn tổng) — `null` khi thiếu
+  /// kỳ hợp lệ → ẩn strip, card render như cũ.
+  BudgetInsights? _insightsFor(BudgetStatus s) {
+    if (s.budget.amount <= 0) return null;
+    final start = tryParseBudgetDate(s.budget.startDate);
+    final end = tryParseBudgetDate(s.budget.endDate);
+    if (start == null || end == null) return null;
+    return computeBudgetInsights(
+      spent: s.spent,
+      budget: s.budget.amount,
+      periodStart: start,
+      periodEnd: end,
+      now: DateTime.now(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.snap;
@@ -257,6 +274,13 @@ class _BudgetCard extends StatelessWidget {
                 color: status.isDanger ? colors.danger : null,
                 fontWeight: status.isDanger ? FontWeight.w700 : null),
           ),
+          // F-#3 (AC 3.9): ngân sách category dùng CÙNG bộ 3 chỉ số
+          // burn rate / safe daily / forecast — cùng pure logic với hero card.
+          // Strip tự ẩn khi ngày cuối kỳ / ngoài kỳ (AC 3.7).
+          if (_insightsFor(status) != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            BudgetInsightsStrip(insights: _insightsFor(status)!),
+          ],
         ]),
       ),
     );

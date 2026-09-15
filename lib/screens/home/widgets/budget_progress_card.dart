@@ -5,7 +5,9 @@ import '../../../core/theme/app_dimens.dart';
 import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/snap_colors.dart';
+import '../../../core/utils/budget_insights.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../widgets/ui/budget_insights_strip.dart';
 import '../../../widgets/ui/money_text.dart';
 
 /// Hero card của Home theo "INK LEDGER" — **thỏi mực** (3.6):
@@ -17,11 +19,42 @@ import '../../../widgets/ui/money_text.dart';
 /// - render `LinearProgressIndicator` với màu semantic theo ngưỡng
 ///   80% / 100% (màu map qua `context.snap`);
 /// - chuỗi "Chưa đặt ngân sách" / "Đã dùng: ..." / "Còn lại: ..." / "%".
+///
+/// F-#3 Smart Budget: truyền thêm [periodStart]/[periodEnd] (ngày đầu/cuối kỳ
+/// inclusive) → hiện dải burn rate / safe daily / forecast (AC 3.1). Không
+/// truyền (hoặc ngày hỏng) → card render y như cũ — caller cũ không vỡ.
 class BudgetProgressCard extends StatelessWidget {
   final int spent;
   final int total;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
 
-  const BudgetProgressCard({required this.spent, required this.total, super.key});
+  /// Mốc "hôm nay" — inject được để widget test không phụ thuộc đồng hồ.
+  final DateTime? now;
+
+  const BudgetProgressCard({
+    required this.spent,
+    required this.total,
+    super.key,
+    this.periodStart,
+    this.periodEnd,
+    this.now,
+  });
+
+  /// Insights F-#3 — `null` khi không đủ dữ liệu kỳ hợp lệ → ẩn strip.
+  BudgetInsights? get _insights {
+    if (total <= 0) return null;
+    final start = periodStart;
+    final end = periodEnd;
+    if (start == null || end == null) return null;
+    return computeBudgetInsights(
+      spent: spent,
+      budget: total,
+      periodStart: start,
+      periodEnd: end,
+      now: now ?? DateTime.now(),
+    );
+  }
 
   double get _rawRatio => total > 0 ? spent / total : 0.0;
   double get _ratio => _rawRatio.toDouble().clamp(0.0, 1.0);
@@ -155,6 +188,12 @@ class BudgetProgressCard extends StatelessWidget {
               ),
             ],
           ),
+          // ── F-#3 Smart Budget: burn rate / safe daily / forecast (AC 3.1) ──
+          // Strip tự ẩn khi ngày cuối kỳ / ngoài kỳ (AC 3.7).
+          if (_insights != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            BudgetInsightsStrip(insights: _insights!, onDark: true),
+          ],
         ],
       ),
     );

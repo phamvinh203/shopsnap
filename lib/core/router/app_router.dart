@@ -11,6 +11,8 @@ import '../../screens/budget_settings/budget_settings_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/home/home_screen.dart';
 import '../../screens/ocr/ocr_screen.dart';
+import '../../screens/profile/export_screen.dart';
+import '../../screens/profile/profile_screen.dart';
 import '../../screens/scan/scan_screen.dart';
 import '../../screens/summary/summary_screen.dart';
 import '../../screens/shell/main_shell.dart';
@@ -69,6 +71,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/ocr',    builder: (c, s) => const OcrScreen()),
       GoRoute(path: '/ar',     builder: (c, s) => const ArStickerScreen()),
       GoRoute(path: '/budget', builder: (c, s) => const BudgetSettingsScreen()),
+      // F-#10: Hồ sơ & dữ liệu — mở từ app bar Home + settings sheet, KHÔNG
+      // thêm bottom nav tab (shell giữ nguyên 3 tab). Ngoài shell → có AppBar
+      // back riêng. Auth gate mềm: chưa đăng nhập vẫn mở được.
+      GoRoute(path: '/profile', builder: (c, s) => const ProfileScreen()),
+      // F-#11: entry từ section Export của /profile.
+      GoRoute(path: '/export', builder: (c, s) => const ExportScreen()),
     ],
   );
 });

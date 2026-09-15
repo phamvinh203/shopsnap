@@ -4,8 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_dimens.dart';
 import '../../core/theme/snap_colors.dart';
+import '../../core/utils/logout_flow.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/theme_provider.dart';
 import '../../widgets/ui/ui.dart';
 
 /// Shell của 3 tab chính (Trang chủ / Tổng kết / Lịch sử) + FAB giữa.
@@ -50,7 +50,8 @@ class MainShell extends ConsumerWidget {
         currentIndex: idx,
         onTap: (i) {
           // Item 3 = "Cài đặt" — pseudo-tab mở sheet, không có route riêng
-          // (giữ nguyên hành vi hiện có; /profile là việc của phase sau).
+          // (F-#10: phần tài khoản/dữ liệu đã gom về /profile — sheet giữ lại
+          // làm trạm trung chuyển nhanh).
           if (i == 3) {
             _showSettingsSheet(context, ref);
             return;
@@ -112,9 +113,23 @@ class MainShell extends ConsumerWidget {
                 context.push('/login');
               },
             ),
-          // Phase 4 — chọn giao diện System / Sáng / Tối (persist qua prefs).
-          const Divider(height: AppSpacing.xl),
-          const _ThemeModeSection(),
+          // F-#10 (AC 10.6): appearance (Giao diện) đã CHUYỂN sang /profile —
+          // sheet không còn tuỳ chọn theme để tránh 2 nơi cấu hình lệch nhau.
+          ListTile(
+            key: const Key('shell_settingsSheet_profileEntry'),
+            contentPadding: EdgeInsets.zero,
+            leading:
+                Icon(Icons.person_outline_rounded, color: context.cs.primary),
+            title: const Text('Hồ sơ & dữ liệu'),
+            subtitle: Text('Tài khoản, đồng bộ, giao diện, xuất dữ liệu',
+                style: context.text.bodySmall),
+            trailing: Icon(Icons.chevron_right,
+                color: context.cs.onSurfaceVariant),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              context.push('/profile');
+            },
+          ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.account_balance_wallet_outlined,
@@ -136,84 +151,13 @@ class MainShell extends ConsumerWidget {
                       ?.copyWith(color: context.snap.danger)),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _confirmLogout(context, ref);
+                // Dùng chung luồng với /profile: confirm dialog (AC 10.7) +
+                // cảnh báo pending changes (AC 10.8) trước khi xoá token.
+                confirmAndLogout(context, ref);
               },
             ),
         ],
       ),
-    );
-  }
-
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await ConfirmDialog.show(
-      context: context,
-      title: 'Đăng xuất',
-      message: 'Bạn chắc chắn muốn đăng xuất khỏi ShopSnap?',
-      confirmLabel: 'Đăng xuất',
-      destructive: true,
-    );
-    if (confirmed) {
-      await ref.read(authStateProvider.notifier).logout();
-      // authStateProvider đổi → router refresh; với auth gate mềm user ở lại
-      // màn đang đứng, banner đăng nhập tự xuất hiện.
-    }
-  }
-}
-
-/// Mục chọn giao diện (Phase 4 — dark mode): System / Sáng / Tối qua
-/// [SegmentedButton], persist qua [themeModeProvider] (SharedPreferences).
-///
-/// ConsumerWidget riêng vì sheet cha đọc auth bằng `ref.read` MỘT lần lúc mở
-/// (tĩnh), còn lựa chọn theme phải rebuild ngay khi user chạm segment.
-class _ThemeModeSection extends ConsumerWidget {
-  const _ThemeModeSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // valueOrNull ?? system: khớp wiring ở app.dart cho case prefs chưa load.
-    final mode = ref.watch(themeModeProvider).valueOrNull ?? ThemeMode.system;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-          child: Row(children: [
-            Icon(Icons.palette_outlined, size: 22, color: context.cs.primary),
-            const SizedBox(width: AppSpacing.lg),
-            Text('Giao diện', style: context.text.titleSmall),
-          ]),
-        ),
-        SegmentedButton<ThemeMode>(
-          key: const Key('shell_settingsSheet_themeSection'),
-          // Key đặt trên Icon (ButtonSegment không nhận key) để test tap
-          // theo key thay vì theo text (khuyến nghị memo redesign mục 5).
-          segments: const [
-            ButtonSegment(
-              value: ThemeMode.system,
-              icon: Icon(Icons.brightness_auto_outlined,
-                  key: Key('shell_themeOption_system')),
-              label: Text('Hệ thống'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.light,
-              icon: Icon(Icons.light_mode_outlined,
-                  key: Key('shell_themeOption_light')),
-              label: Text('Sáng'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.dark,
-              icon: Icon(Icons.dark_mode_outlined,
-                  key: Key('shell_themeOption_dark')),
-              label: Text('Tối'),
-            ),
-          ],
-          selected: {mode},
-          onSelectionChanged: (selection) => ref
-              .read(themeModeProvider.notifier)
-              .setMode(selection.first),
-        ),
-      ],
     );
   }
 }

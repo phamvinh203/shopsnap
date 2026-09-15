@@ -53,6 +53,9 @@ GoRouter _router() => GoRouter(
         GoRoute(
             path: '/budget',
             builder: (_, __) => const _Body('BUDGET_BODY')),
+        GoRoute(
+            path: '/profile',
+            builder: (_, __) => const _Body('PROFILE_BODY')),
       ],
     );
 
@@ -124,7 +127,8 @@ void main() {
       expect(find.text('LOGIN_BODY'), findsOneWidget);
     });
 
-    testWidgets('chưa đăng nhập: sheet Cài đặt có mục Đăng nhập, không Đăng xuất',
+    testWidgets('chưa đăng nhập: sheet Cài đặt có mục Đăng nhập + Hồ sơ, '
+        'KHÔNG còn mục Giao diện (F-#10 AC 10.6), không Đăng xuất',
         (tester) async {
       await _pumpShell(tester, authenticated: false);
 
@@ -135,6 +139,13 @@ void main() {
           findsOneWidget);
       expect(find.text('Cài đặt ngân sách'), findsOneWidget);
       expect(find.text('Đăng xuất'), findsNothing);
+      // F-#10 (AC 10.6): appearance chỉ còn ở /profile.
+      expect(find.byKey(const Key('shell_settingsSheet_themeSection')),
+          findsNothing);
+      expect(find.text('Giao diện'), findsNothing);
+      // Mục mới dẫn tới /profile.
+      expect(find.byKey(const Key('shell_settingsSheet_profileEntry')),
+          findsOneWidget);
 
       await tester
           .tap(find.byKey(const Key('shell_settingsSheet_loginEntry')));
@@ -143,8 +154,8 @@ void main() {
       expect(find.text('LOGIN_BODY'), findsOneWidget);
     });
 
-    testWidgets('đã đăng nhập: ẩn banner, sheet có Đăng xuất',
-        (tester) async {
+    testWidgets('đã đăng nhập: ẩn banner, sheet có Đăng xuất + mục Hồ sơ '
+        '→ /profile', (tester) async {
       await _pumpShell(tester, authenticated: true);
 
       expect(find.byKey(const Key('shell_loginBanner')), findsNothing);
@@ -156,6 +167,12 @@ void main() {
           findsNothing);
       expect(find.text('Cài đặt ngân sách'), findsOneWidget);
       expect(find.text('Đăng xuất'), findsOneWidget);
+
+      await tester.tap(
+          find.byKey(const Key('shell_settingsSheet_profileEntry')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('PROFILE_BODY'), findsOneWidget);
     });
   });
 }

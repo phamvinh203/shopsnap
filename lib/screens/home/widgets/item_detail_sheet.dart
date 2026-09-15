@@ -10,10 +10,12 @@ import '../../../models/category_model.dart';
 import '../../../models/item_model.dart';
 import '../../../providers/categories_provider.dart';
 import '../../../providers/items_provider.dart';
+import '../../../providers/price_history_provider.dart';
 import '../../../widgets/ui/app_bottom_sheet.dart';
 import '../../../widgets/ui/app_button.dart';
 import '../../../widgets/ui/app_text_field.dart';
 import '../../../widgets/ui/confirm_dialog.dart';
+import 'deal_badge_card.dart';
 
 /// Bottom-sheet XEM CHI TIẾT + SỬA NHANH mặt hàng (PO chốt ở biên bản 00:
 /// làm bottom-sheet sửa nhanh trước, màn Item Detail đầy đủ ở phase sau).
@@ -96,6 +98,28 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
       CurrencyFormatter.parse(_priceCtrl.text) != widget.item.price ||
       _categoryId != widget.item.categoryId;
 
+  /// F-#1 Deal Badge card — tra cứu price history (offline-first, user-scoped)
+  /// theo tên/barcode của item. Không có history → không card (AC 1.6);
+  /// đang loading hoặc lỗi tra cứu → cũng ẩn để không chặn flow sửa nhanh.
+  Widget _buildDealBadge(BuildContext context, ItemModel item) {
+    final query = PriceHistoryQuery(name: item.name, barcode: item.barcode);
+    final summaryAsync = ref.watch(priceHistorySummaryProvider(query));
+    final badge = ref.watch(dealBadgeProvider(query));
+
+    return summaryAsync.when(
+      skipLoadingOnReload: true,
+      data: (summary) {
+        if (summary == null || badge == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+          child: DealBadgeCard(summary: summary, badge: badge),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     final price = CurrencyFormatter.parse(_priceCtrl.text);
@@ -173,6 +197,10 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // ── F-#1 Deal Badge — đánh giá giá theo price history của user ──────
+        // 0 record / đang loading / lỗi tra cứu → không render card (AC 1.6).
+        _buildDealBadge(context, item),
+
         // ── Info: số lượng (chỉ xem — chưa sửa được, xem ghi chú class) ─────
         if (item.quantity != null) ...[
           Row(

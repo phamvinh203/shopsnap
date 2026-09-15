@@ -16,6 +16,7 @@ export 'app_scaffold.dart';
 export 'app_snack_bar.dart';
 export 'app_states.dart';
 export 'app_text_field.dart';
+export 'budget_insights_strip.dart';
 export 'budget_progress_bar.dart';
 export 'category_chip.dart';
 export 'confirm_dialog.dart';

@@ -192,9 +192,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Text 'Cài đặt' trùng 2 chỗ trong sheet (title + label khác) nên
-      // assert sheet qua key của mục theme (P4) + text đầy đủ của mục ngân sách.
+      // assert sheet qua key của mục Hồ sơ (F-#10 — theme đã chuyển sang
+      // /profile theo AC 10.6) + text đầy đủ của mục ngân sách.
       expect(
-          find.byKey(const Key('shell_settingsSheet_themeSection')),
+          find.byKey(const Key('shell_settingsSheet_profileEntry')),
           findsOneWidget);
       expect(find.text('Cài đặt ngân sách'), findsOneWidget);
 

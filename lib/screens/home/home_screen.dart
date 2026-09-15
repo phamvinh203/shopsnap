@@ -6,6 +6,7 @@ import '../../core/theme/app_dimens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
+import '../../core/utils/budget_insights.dart';
 import '../../core/utils/date_helper.dart';
 import '../../models/item_model.dart';
 import '../../providers/items_provider.dart';
@@ -193,6 +194,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                             onPressed: _checkAppUpdateManually,
                           ),
+                          // F-#10 (AC 10.1): avatar/app bar → mở /profile.
+                          IconButton(
+                            key: const Key('homeScreen_profileButton'),
+                            tooltip: 'Hồ sơ & dữ liệu',
+                            icon: Icon(
+                              Icons.account_circle_outlined,
+                              color: context.cs.onSurfaceVariant,
+                            ),
+                            onPressed: () => context.push('/profile'),
+                          ),
                         ],
                       ),
                     ],
@@ -286,6 +297,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     data: (status) => BudgetProgressCard(
                       spent: status?.spent ?? 0,
                       total: status?.budget.amount ?? 0,
+                      // F-#3 Smart Budget: kỳ ngân sách để tính burn rate /
+                      // safe daily / forecast (ngày hỏng → card ẩn strip).
+                      periodStart:
+                          tryParseBudgetDate(status?.budget.startDate),
+                      periodEnd: tryParseBudgetDate(status?.budget.endDate),
                     ),
                     loading: () => const Padding(
                       padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),

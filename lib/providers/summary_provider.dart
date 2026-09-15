@@ -132,17 +132,49 @@ final summaryInsightsProvider =
   }
 });
 
-/// Trợ lý AI Gemini phân tích chi tiêu, dự báo thâm hụt cuối tháng & mẹo tiết kiệm
+/// F-#2 (AC 2.1): tổng chi KỲ LIỀN TRƯỚC cùng độ dài — nguồn offline cho MoM
+/// khi server không trả comparison (mất mạng / chưa đăng nhập). Căn kỳ giống
+/// [SummaryParams.localRange]: lùi 1 ngày từ đầu kỳ → lấy kỳ dài bằng ngược lên.
+final previousPeriodTotalProvider =
+    FutureProvider.family<int, SummaryParams>((ref, params) async {
+  final db  = await ref.watch(databaseProvider.future);
+  final dao = ItemDao(db);
+
+  final range    = params.localRange;
+  final length   = range.$2.difference(range.$1).inDays + 1;
+  final prevEnd  = range.$1.subtract(const Duration(days: 1));
+  final prevStart = prevEnd.subtract(Duration(days: length - 1));
+
+  final prev = await dao.getSummaryForRange(prevStart, prevEnd);
+  return prev.totalSpent;
+});
+
+/// F-#2 (AC 2.5): timeout gọi AI — mặc định 5s, đổi được qua dart-define
+/// `SHOPSNAP_AI_TIMEOUT_MS`. Quá hạn → ném TimeoutException → caller rơi vào
+/// heuristic fallback, dashboard không treo.
+const aiAssistantTimeout = Duration(
+  milliseconds: int.fromEnvironment(
+    'SHOPSNAP_AI_TIMEOUT_MS',
+    defaultValue: 5000,
+  ),
+);
+
+/// Trợ lý AI Gemini phân tích chi tiêu, dự báo thâm hụt cuối tháng & mẹo tiết kiệm.
+/// Chỉ gửi mốc ngày lên server (aggregates do BE tự tổng hợp — AC 2.4, không
+/// có raw transaction).
+///
+/// F-#2 (AC 2.5): lỗi gọi AI (network / 5xx / thiếu key) hoặc quá
+/// [aiAssistantTimeout] → AsyncError để UI render heuristic fallback — vì vậy
+/// KHÔNG nuốt exception ở đây. Chưa đăng nhập → null (không có AI section).
 final aiAssistantProvider =
     FutureProvider.family<AiAssistantResponse?, String?>((ref, dateStr) async {
   final authenticated = ref.watch(authStateProvider).value?.isAuthenticated == true;
   if (!authenticated) return null;
 
-  try {
-    return await ref.watch(summaryApiServiceProvider).aiAssistant(date: dateStr);
-  } catch (_) {
-    return null;
-  }
+  return ref
+      .watch(summaryApiServiceProvider)
+      .aiAssistant(date: dateStr)
+      .timeout(aiAssistantTimeout);
 });
 
 /// Dịch mốc ngày theo kỳ cho nút prev/next của summary_screen — server tự căn

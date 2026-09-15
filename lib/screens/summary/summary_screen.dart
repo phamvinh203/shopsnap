@@ -14,6 +14,7 @@ import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_helper.dart';
+import '../../core/utils/spending_dashboard.dart';
 import '../../models/ai_assistant_model.dart';
 import '../../models/summary_model.dart';
 import '../../providers/auth_provider.dart';
@@ -21,6 +22,8 @@ import '../../providers/summary_provider.dart';
 import '../../services/summary_api_service.dart';
 import '../../widgets/ui/ui.dart';
 import 'widgets/ai_assistant_card.dart';
+import 'widgets/category_breakdown_card.dart';
+import 'widgets/heuristic_insight_card.dart';
 
 class SummaryScreen extends ConsumerStatefulWidget {
   const SummaryScreen({super.key});
@@ -58,10 +61,13 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   Widget build(BuildContext context) {
     final params       = SummaryParams(date: _date, period: _period);
     final summaryAsync = ref.watch(summaryProvider(params));
-    // Response server thô → comparison/trend (summaryProvider đã merge số chính)
+    // F-#2: MoM — ưu tiên comparison từ server (GET /summary), offline thì
+    // tính local từ tổng kỳ liền trước trong sqflite (AC 2.1).
     final comparison   = ref.watch(serverSummaryProvider(params)).valueOrNull?.comparison;
+    final localPrev    = ref.watch(previousPeriodTotalProvider(params)).valueOrNull;
     final insights     = ref.watch(summaryInsightsProvider(params)).valueOrNull ?? const <SpendingInsight>[];
-    final aiAssistant  = ref.watch(aiAssistantProvider(SummaryParams.fmt(_date))).valueOrNull;
+    // F-#2 (AC 2.5/2.6): AI là AsyncValue — loading → skeleton, lỗi → fallback.
+    final aiAssistant  = ref.watch(aiAssistantProvider(SummaryParams.fmt(_date)));
 
     return Scaffold(
       // Nền + appbar lấy từ theme (không còn Colors.white hardcode).
@@ -129,26 +135,45 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                 ),
               ),
             ),
-            data: (summary) => summary.totalSpent == 0
-                ? SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: EmptyState(
-                      icon: Icons.receipt_long_outlined,
-                      title: _emptyMessage(_date, _period),
-                      message: 'Ghi nhanh món vừa mua để xem tổng kết nhé!',
-                      actionLabel: 'Thêm mặt hàng',
-                      onAction: () => context.push('/add'),
-                    ),
-                  )
-                : _SummaryBody(
-                    summary:      summary,
-                    comparison:   comparison,
-                    insights:     insights,
-                    aiAssistant:  aiAssistant,
-                    showItems:    _period == 'day', // API /summary không trả items
-                    touchedIndex: _touchedIndex,
-                    onTouch:      (i) => setState(() => _touchedIndex = i),
+            data: (summary) {
+              if (summary.totalSpent == 0) {
+                // AC 2.7: kỳ không có giao dịch → EmptyState duy nhất cho cả
+                // header / breakdown / AI card, kèm CTA thêm khoản chi.
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: _emptyMessage(_date, _period),
+                    message: 'Ghi nhanh món vừa mua để xem tổng kết nhé!',
+                    actionLabel: 'Thêm mặt hàng',
+                    onAction: () => context.push('/add'),
                   ),
+                );
+              }
+
+              // AC 2.1/2.2: MoM — server ưu tiên, local lấp chỗ trống; kỳ
+              // month so "tháng trước", kỳ khác so "kỳ trước".
+              final previousTotal = comparison?.previousPeriodSpent ?? localPrev;
+              final mom = previousTotal == null
+                  ? null
+                  : computeMomChange(
+                      current: summary.totalSpent,
+                      previous: previousTotal,
+                      serverTrend: comparison?.trend,
+                      comparisonLabel:
+                          _period == 'month' ? 'tháng trước' : 'kỳ trước',
+                    );
+
+              return _SummaryBody(
+                summary:      summary,
+                mom:          mom,
+                insights:     insights,
+                aiAssistant:  aiAssistant,
+                showItems:    _period == 'day', // API /summary không trả items
+                touchedIndex: _touchedIndex,
+                onTouch:      (i) => setState(() => _touchedIndex = i),
+              );
+            },
           ),
         ],
       ),
@@ -322,25 +347,43 @@ class _DateNavBar extends StatelessWidget {
 
 class _SummaryBody extends StatelessWidget {
   final SummaryModel summary;
-  final SummaryComparison? comparison;
+
+  /// F-#2: MoM tháng này vs tháng trước (null = không có dữ liệu kỳ trước →
+  /// ẩn chip, AC 2.1).
+  final MomChange? mom;
   final List<SpendingInsight> insights;
-  final AiAssistantResponse? aiAssistant;
+
+  /// F-#2 (AC 2.5/2.6): AI card là AsyncValue — loading → skeleton riêng,
+  /// lỗi/null → heuristic fallback; hero + breakdown KHÔNG chờ AI.
+  final AsyncValue<AiAssistantResponse?> aiAssistant;
   final bool showItems;
   final int?         touchedIndex;
   final ValueChanged<int?> onTouch;
 
   const _SummaryBody({
     required this.summary,
-    required this.comparison,
+    required this.mom,
     required this.insights,
-    this.aiAssistant,
+    required this.aiAssistant,
     required this.showItems,
     required this.touchedIndex,
     required this.onTouch,
   });
 
+  /// Text fallback local từ aggregates (AC 2.5) — cũng dùng khi AI null
+  /// (offline / chưa đăng nhập).
+  String get _heuristicText => heuristicSpendingInsight(
+        categoriesSortedDesc: sortCategoriesDesc(summary.categories),
+        totalSpent: summary.totalSpent,
+        mom: mom,
+      );
+
   @override
-  Widget build(BuildContext context) => SliverList(
+  Widget build(BuildContext context) {
+    // Local copy để null-promotion hoạt động (field promotion cần Dart 3.2,
+    // package đang ở language version 3.0).
+    final momData = mom;
+    return SliverList(
         delegate: SliverChildListDelegate([
           // ── Hero total card — "thỏi mực / bảng đen" (INK LEDGER 4.4) ─────
           Builder(builder: (context) {
@@ -394,23 +437,11 @@ class _SummaryBody extends StatelessWidget {
                       style: context.text.bodySmall
                           ?.copyWith(color: cream.withOpacity(0.6)),
                     ),
-                    // So sánh với kỳ liền trước — chỉ có khi lấy được từ server
-                    if (comparison != null) ...[
+                    // F-#2 (AC 2.1/2.2): chip MoM — mũi tên + % so tháng trước,
+                    // tăng = đỏ / giảm = xanh; tháng trước 0đ → "Tháng mới bắt đầu".
+                    if (momData != null) ...[
                       const SizedBox(height: AppSpacing.sm),
-                      Row(children: [
-                        Icon(_trendIcon(comparison!.trend),
-                            color: creamDim, size: 14),
-                        const SizedBox(width: AppSpacing.xs),
-                        Flexible(
-                          child: Text(
-                            _trendText(comparison!),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.text.bodySmall
-                                ?.copyWith(color: creamDim),
-                          ),
-                        ),
-                      ]),
+                      _momChip(context, momData),
                     ],
                   ]),
                 ),
@@ -418,9 +449,23 @@ class _SummaryBody extends StatelessWidget {
             );
           }),
 
-          // ── AI Smart Shopping Assistant Card ────────────────────────────
-          if (aiAssistant != null)
-            AiAssistantCard(data: aiAssistant!),
+          // ── AI insight — 3 trạng thái (AC 2.5/2.6) ───────────────────────
+          // data(null) = chưa đăng nhập → không có AI section (như baseline);
+          // error (network/5xx/timeout) → heuristic fallback — card không trống.
+          aiAssistant.when(
+            data: (data) => data != null
+                ? AiAssistantCard(data: data)
+                : const SizedBox.shrink(),
+            loading: () => const AiInsightSkeleton(),
+            error: (_, __) => HeuristicInsightCard(text: _heuristicText),
+          ),
+
+          // ── F-#2 (AC 2.3): breakdown progress bar xếp GIẢM DẦN ──────────
+          if (summary.categories.isNotEmpty)
+            CategoryBreakdownCard(
+              categories: summary.categories,
+              totalSpent: summary.totalSpent,
+            ),
 
           // ── Pie chart ───────────────────────────────────────────────────
           if (summary.categories.isNotEmpty) ...[
@@ -491,6 +536,61 @@ class _SummaryBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.xxxl),
         ]),
       );
+  }
+
+  /// F-#2 (AC 2.1/2.2): chip so sánh MoM — tăng = ĐỎ (danger), giảm = XANH
+  /// (success), ngang = trung tính; kỳ trước 0đ → badge lime "Tháng mới
+  /// bắt đầu" thay cho % (không chia 0).
+  Widget _momChip(BuildContext context, MomChange mom) {
+    final colors = context.snap;
+
+    if (mom.isNewStart) {
+      return Container(
+        key: const Key('summaryScreen_momNew'),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs + 1,
+        ),
+        decoration: BoxDecoration(
+          color: colors.accent,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: Text(
+          mom.label,
+          style: (context.text.labelLarge ?? const TextStyle()).copyWith(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: colors.onAccent,
+          ),
+        ),
+      );
+    }
+
+    final (IconData icon, Color color) = switch (mom.direction) {
+      MomDirection.up => (Icons.trending_up, colors.danger),
+      MomDirection.down => (Icons.trending_down, colors.success),
+      // newStart đã được xử lý bằng early-return phía trên; flat/newStart
+      // đều là "không có biến động %" → icon trung tính.
+      MomDirection.flat ||
+      MomDirection.newStart => (Icons.trending_flat, colors.success),
+    };
+
+    return Row(
+      key: const Key('summaryScreen_momChip'),
+      children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: AppSpacing.xs),
+        Flexible(
+          child: Text(
+            mom.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.text.bodySmall?.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+  }
 
   List<PieChartSectionData> _buildSections(BuildContext context, SummaryModel summary) {
     final total = summary.totalSpent;
@@ -515,28 +615,7 @@ class _SummaryBody extends StatelessWidget {
     });
   }
 
-  static IconData _trendIcon(String trend) {
-    switch (trend) {
-      case 'up':   return Icons.trending_up;
-      case 'down': return Icons.trending_down;
-      default:     return Icons.trending_flat;
-    }
-  }
-
-  static String _trendText(SummaryComparison c) {
-    switch (c.trend) {
-      case 'up':
-        return c.changePercentage != null
-            ? '+${c.changePercentage!.toStringAsFixed(0)}% so với kỳ trước'
-            : 'Tăng so với kỳ trước';
-      case 'down':
-        return c.changePercentage != null
-            ? '${c.changePercentage!.toStringAsFixed(0)}% so với kỳ trước'
-            : 'Giảm so với kỳ trước';
-      default:
-        return 'Ngang bằng kỳ trước';
-    }
-  }
+  // (F-#2: nhãn trend cũ đã thay bằng chip MoM màu semantic ở _momChip.)
 }
 
 class _Legend extends StatelessWidget {

@@ -5,6 +5,7 @@ import 'package:shopsnap/models/category_model.dart';
 import 'package:shopsnap/models/item_model.dart';
 import 'package:shopsnap/providers/categories_provider.dart';
 import 'package:shopsnap/providers/items_provider.dart';
+import 'package:shopsnap/providers/price_history_provider.dart';
 import 'package:shopsnap/screens/home/widgets/item_detail_sheet.dart';
 
 import 'ui/helpers.dart';
@@ -98,6 +99,10 @@ Future<void> _pumpSheet(
       overrides: [
         itemsProvider.overrideWith(() => items),
         categoriesProvider.overrideWith(_FakeCategoriesNotifier.new),
+        // F-#1: sheet giờ watch price history (Deal Badge) — hermetic test
+        // form thì override trả null (không history → không card, AC 1.6).
+        priceHistorySummaryProvider(PriceHistoryQuery(name: item.name))
+            .overrideWith((ref) async => null),
       ],
       child: wrapWithAppTheme(ItemDetailSheet(item: item)),
     ),

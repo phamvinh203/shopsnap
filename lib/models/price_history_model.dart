@@ -45,6 +45,11 @@ class PriceHistorySummary {
   final int totalRecords;
   final List<PriceHistoryPoint> points;
 
+  /// Ngưỡng % cho Deal Badge (F-#1) — BE config `DEAL_BADGE_THRESHOLD_PERCENT`
+  /// trả kèm response qua field `deal_threshold_percent`. `null` → client dùng
+  /// default (xem `resolveDealThreshold` trong core/utils/deal_badge.dart).
+  final double? dealThresholdPercent;
+
   const PriceHistorySummary({
     required this.itemName,
     this.barcode,
@@ -57,6 +62,7 @@ class PriceHistorySummary {
     required this.trend,
     required this.totalRecords,
     required this.points,
+    this.dealThresholdPercent,
   });
 
   factory PriceHistorySummary.fromJson(Map<String, dynamic> json) {
@@ -75,15 +81,19 @@ class PriceHistorySummary {
     return PriceHistorySummary(
       itemName: json['item_name'] as String? ?? '',
       barcode: json['barcode'] as String?,
-      latestPrice: (json['latest_price'] as num?)?.toInt() ?? 0,
-      previousPrice: (json['previous_price'] as num?)?.toInt(),
-      minPrice: (json['min_price'] as num?)?.toInt() ?? 0,
-      maxPrice: (json['max_price'] as num?)?.toInt() ?? 0,
-      avgPrice: (json['avg_price'] as num?)?.toInt() ?? 0,
+      // AC 1.12 (F-#1): số lẻ (vd 12345.67) làm tròn về số nguyên VND,
+      // không cắt phần thập phân.
+      latestPrice: (json['latest_price'] as num?)?.round() ?? 0,
+      previousPrice: (json['previous_price'] as num?)?.round(),
+      minPrice: (json['min_price'] as num?)?.round() ?? 0,
+      maxPrice: (json['max_price'] as num?)?.round() ?? 0,
+      avgPrice: (json['avg_price'] as num?)?.round() ?? 0,
       priceChangePercent: (json['price_change_percent'] as num?)?.toDouble(),
       trend: trend,
       totalRecords: (json['total_records'] as num?)?.toInt() ?? points.length,
       points: points,
+      dealThresholdPercent:
+          (json['deal_threshold_percent'] as num?)?.toDouble(),
     );
   }
 }
