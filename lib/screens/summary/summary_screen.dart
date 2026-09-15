@@ -21,9 +21,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/summary_provider.dart';
 import '../../services/summary_api_service.dart';
 import '../../widgets/ui/ui.dart';
+import '../../core/utils/merchant_insights.dart';
 import 'widgets/ai_assistant_card.dart';
 import 'widgets/category_breakdown_card.dart';
 import 'widgets/heuristic_insight_card.dart';
+import 'widgets/merchant_breakdown_card.dart';
 
 class SummaryScreen extends ConsumerStatefulWidget {
   const SummaryScreen({super.key});
@@ -66,6 +68,9 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     final comparison   = ref.watch(serverSummaryProvider(params)).valueOrNull?.comparison;
     final localPrev    = ref.watch(previousPeriodTotalProvider(params)).valueOrNull;
     final insights     = ref.watch(summaryInsightsProvider(params)).valueOrNull ?? const <SpendingInsight>[];
+    // M-3 (AC 7.8): phân tích nơi mua — local-only, valueOrNull để hero/breakdown
+    // không chờ; card tự ẩn khi không có dữ liệu nơi mua (AC 7.10).
+    final merchant     = ref.watch(merchantSummaryProvider(params)).valueOrNull;
     // F-#2 (AC 2.5/2.6): AI là AsyncValue — loading → skeleton, lỗi → fallback.
     final aiAssistant  = ref.watch(aiAssistantProvider(SummaryParams.fmt(_date)));
 
@@ -168,6 +173,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                 summary:      summary,
                 mom:          mom,
                 insights:     insights,
+                merchant:     merchant,
                 aiAssistant:  aiAssistant,
                 showItems:    _period == 'day', // API /summary không trả items
                 touchedIndex: _touchedIndex,
@@ -353,6 +359,10 @@ class _SummaryBody extends StatelessWidget {
   final MomChange? mom;
   final List<SpendingInsight> insights;
 
+  /// M-3 (AC 7.8): phân tích nơi mua — null = đang load/lỗi → ẩn section
+  /// (local query nhanh nên thực tế gần như luôn có ngay).
+  final MerchantSummary? merchant;
+
   /// F-#2 (AC 2.5/2.6): AI card là AsyncValue — loading → skeleton riêng,
   /// lỗi/null → heuristic fallback; hero + breakdown KHÔNG chờ AI.
   final AsyncValue<AiAssistantResponse?> aiAssistant;
@@ -364,6 +374,7 @@ class _SummaryBody extends StatelessWidget {
     required this.summary,
     required this.mom,
     required this.insights,
+    required this.merchant,
     required this.aiAssistant,
     required this.showItems,
     required this.touchedIndex,
@@ -383,6 +394,7 @@ class _SummaryBody extends StatelessWidget {
     // Local copy để null-promotion hoạt động (field promotion cần Dart 3.2,
     // package đang ở language version 3.0).
     final momData = mom;
+    final merchantData = merchant;
     return SliverList(
         delegate: SliverChildListDelegate([
           // ── Hero total card — "thỏi mực / bảng đen" (INK LEDGER 4.4) ─────
@@ -466,6 +478,11 @@ class _SummaryBody extends StatelessWidget {
               categories: summary.categories,
               totalSpent: summary.totalSpent,
             ),
+
+          // ── M-3 (AC 7.8–7.12): chi tiêu theo nơi mua (top 5) + insight ───
+          // Card tự ẩn khi kỳ không có item nào có nơi mua (AC 7.10).
+          if (merchantData != null)
+            MerchantBreakdownCard(data: merchantData),
 
           // ── Pie chart ───────────────────────────────────────────────────
           if (summary.categories.isNotEmpty) ...[

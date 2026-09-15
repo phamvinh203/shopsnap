@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/constants/app_constants.dart';
 import '../../models/item_model.dart';
 import '../../models/summary_model.dart';
 import '../../core/utils/date_helper.dart';
@@ -17,6 +18,7 @@ class CreateItemDto {
   final String? imagePath;
   final String? note;
   final String? barcode;
+  final String? storeName; // M-3 (AC 7.3): nơi mua — TUỲ CHỌN, null = không có
   final double? latitude;
   final double? longitude;
   final Map<String, dynamic>? stickerData;
@@ -28,10 +30,18 @@ class CreateItemDto {
     this.imagePath,
     this.note,
     this.barcode,
+    this.storeName,
     this.latitude,
     this.longitude,
     this.stickerData,
   });
+}
+
+/// Chuẩn hoá nơi mua trước khi lưu/gửi: trim; rỗng → null (AC 7.3/7.6 —
+/// bỏ trống nghĩa là item KHÔNG có store_name, không lưu chuỗi rỗng ngầm).
+String? sanitizeStoreName(String? raw) {
+  final t = raw?.trim();
+  return (t == null || t.isEmpty) ? null : t;
 }
 
 class ItemDao {
@@ -42,6 +52,7 @@ class ItemDao {
     final now = DateTime.now().millisecondsSinceEpoch;
     final id  = _uuid.v4();
     final cid = dto.categoryId ?? 'cat_other'; // cột category_id NOT NULL
+    final store = sanitizeStoreName(dto.storeName);
 
     await db.transaction((txn) async {
       await txn.insert('items', {
@@ -55,6 +66,7 @@ class ItemDao {
         'latitude':     dto.latitude,
         'longitude':    dto.longitude,
         'sticker_data': dto.stickerData != null ? jsonEncode(dto.stickerData) : null,
+        'store_name':   store, // M-3: cột từ migration v7 (nullable)
         'created_at':   now,
         'updated_at':   now,
         'is_synced':    0,
@@ -71,13 +83,19 @@ class ItemDao {
         'purchased_at': now,
       });
 
-      // Enqueue for cloud sync
+      // Enqueue for cloud sync — payload mang cả store_name để server tạo
+      // item đúng nơi mua khi push (AC 7.3 "lưu + sync → BE nhận nguyên văn").
       await txn.insert('sync_queue', {
         'id':          _uuid.v4(),
         'entity_type': 'item',
         'entity_id':   id,
         'operation':   'INSERT',
-        'payload':     jsonEncode({'name': dto.name, 'price': dto.price, 'category_id': cid}),
+        'payload':     jsonEncode({
+          'name': dto.name,
+          'price': dto.price,
+          'category_id': cid,
+          if (store != null) 'store_name': store,
+        }),
         'created_at':  now,
         'retry_count': 0,
       });
@@ -127,6 +145,11 @@ class ItemDao {
 
   /// Cập nhật local khi offline (fallback của updateItem) — mark is_synced=0
   /// và enqueue UPDATE vào sync_queue, đồng bộ cách insert/softDelete đang làm.
+  ///
+  /// [storeName] M-3: khác các param khác, `''` là GIÁ TRỊ HỢP LỆ nghĩa là
+  /// "user xoá trắng" → cột về NULL và payload gửi chuỗi rỗng cho server
+  /// (PATCH store_name='' hợp lệ theo BE — @IsString, AC 7.6 không giữ giá trị
+  /// cũ ngầm). `null` = không đổi nơi mua.
   Future<void> updateLocal(
     String id, {
     String? name,
@@ -134,14 +157,17 @@ class ItemDao {
     String? categoryId,
     String? note,
     String? barcode,
+    String? storeName,
   }) async {
     final now  = DateTime.now().millisecondsSinceEpoch;
+    final store = storeName == null ? null : sanitizeStoreName(storeName);
     final changes = <String, dynamic>{
       if (name       != null) 'name':       name,
       if (price      != null) 'price':      price,
       if (categoryId != null) 'category_id': categoryId,
       if (note       != null) 'note':       note,
       if (barcode    != null) 'barcode':    barcode,
+      if (storeName  != null) 'store_name': store, // trim; rỗng → NULL
       'updated_at':  now,
       'is_synced':   0,
     };
@@ -158,12 +184,34 @@ class ItemDao {
         if (categoryId != null) 'category_id': categoryId,
         if (note       != null) 'note':       note,
         if (barcode    != null) 'barcode':    barcode,
+        if (storeName  != null) 'store_name': store,
       }),
       'created_at':  now,
       'retry_count': 0,
     });
     await db.update('items', changes,
         where: 'id = ? AND is_deleted = 0', whereArgs: [id]);
+  }
+
+  /// M-3 (AC 7.4): gợi ý "Nơi mua" theo TẦN SUẤT giảm dần — tính từ giá trị
+  /// NGUYÊN VĂN user đã dùng (không normalize — AC 7.13), chỉ item chưa xoá
+  /// mềm đóng góp. Trùng nguyên văn mới gộp; đúng query 1 lần như spec.
+  /// Offline đọc được trực tiếp từ SQLite (AC 7.14).
+  Future<List<String>> getStoreSuggestions({
+    int limit = AppConstants.storeSuggestionLimit,
+  }) async {
+    final rows = await db.rawQuery('''
+      SELECT store_name, COUNT(*) AS use_count
+      FROM items
+      WHERE store_name IS NOT NULL AND store_name != '' AND is_deleted = 0
+      GROUP BY store_name
+      ORDER BY use_count DESC, store_name ASC
+      LIMIT ?
+    ''', [limit]);
+    return rows
+        .map((r) => r['store_name'] as String?)
+        .whereType<String>()
+        .toList();
   }
 
   /// Item trong khoảng ngày [start, end] (bao cả 2 đầu) — cùng SQL với
@@ -181,6 +229,21 @@ class ItemDao {
   }
 
   Future<List<ItemModel>> findByDay(DateTime day) => findByRange(day, day);
+
+  /// F-#5 P1: item local gần đây (MỚI → CŨ, chỉ item chưa xoá) — dùng cho
+  /// duplicate detection khi confirm hóa đơn (AC 5.3: cửa sổ 7 ngày) và học
+  /// gợi ý category từ lịch sử (AC 5.2). Lấy rộng 30 ngày để còn seed learning.
+  Future<List<ItemModel>> findRecent({int days = 30}) async {
+    final since =
+        DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+    final rows = await db.query(
+      'items',
+      where: 'created_at >= ? AND is_deleted = 0',
+      whereArgs: [since],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(ItemModel.fromMap).toList();
+  }
 
   /// Tổng hợp summary cho khoảng ngày [start, end] (bao cả 2 đầu) — cùng phép
   /// tính GROUP BY category như getSummaryForDay, làm fallback offline cho

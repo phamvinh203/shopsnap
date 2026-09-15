@@ -104,18 +104,23 @@ void main() {
   });
 
   group('ItemModel.toMap (sqflite)', () {
-    test('đúng bộ cột hiện có của bảng items — không phá schema', () {
+    test('đúng bộ cột của bảng items (v7 có thêm store_name — M-3)', () {
       final map = ItemModel.fromApiJson(fullItemJson()).toMap();
       expect(map.keys.toSet(), {
         'id', 'name', 'price', 'category_id', 'image_path', 'note', 'barcode',
-        'latitude', 'longitude', 'sticker_data', 'created_at', 'updated_at',
+        'latitude', 'longitude', 'sticker_data', 'store_name',
+        'created_at', 'updated_at',
         'server_id', 'is_synced', 'is_deleted',
       });
       expect(map['is_synced'], 1);
       expect(map['server_id'], '000c1588-8cdd-4c22-9236-04e335e99124');
+      // M-3: store_name GIỮ VÀO row local từ migration v7 (AC 7.2)
+      expect(map['store_name'], 'Circle K');
       // Field API-only không lọt vào row
       expect(map.containsKey('total_price'), isFalse);
       expect(map.containsKey('purchase_date'), isFalse);
+      expect(map.containsKey('source'), isFalse);
+      expect(map.containsKey('image_url'), isFalse);
     });
 
     test('fromMap(toMap) round-trip các field cốt lõi', () {
@@ -127,6 +132,8 @@ void main() {
       expect(back.categoryId, fromApi.categoryId);
       expect(back.createdAt, fromApi.createdAt);
       expect(back.isSynced, isTrue);
+      // M-3 (AC 7.2): store_name round-trip qua SQLite không mất giá trị.
+      expect(back.storeName, 'Circle K');
       // toMap chỉ lưu category_id — categoryName/icon/color là alias của JOIN
       // trong ItemDao.findByDay, không phải cột của bảng items → round-trip
       // thuần từMap/fromMap sẽ rỗng (fallback an toàn của fromMap).
@@ -139,13 +146,15 @@ void main() {
         'category_id': 'cat_food', 'cat_name': 'Ăn uống', 'cat_icon': '🍜',
         'cat_color': '#FF6B6B', 'image_path': null, 'note': null,
         'barcode': null, 'latitude': null, 'longitude': null,
-        'sticker_data': null, 'created_at': 1000, 'updated_at': 1000,
+        'sticker_data': null, 'store_name': null,
+        'created_at': 1000, 'updated_at': 1000,
         'server_id': null, 'is_synced': 0, 'is_deleted': 0,
       });
       expect(back.isSynced, isFalse);
       expect(back.serverId, isNull);
       expect(back.totalPrice, isNull); // field API-only → null khi đọc từ DB
       expect(back.imagePath, isNull);
+      expect(back.storeName, isNull); // row cũ (pre-v7) không có nơi mua
     });
   });
 

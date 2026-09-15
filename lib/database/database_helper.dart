@@ -1,6 +1,8 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../core/constants/app_constants.dart';
+import 'items_store_name_schema.dart';
+import 'recurring_expenses_schema.dart';
 
 class DatabaseHelper {
   static Database? _db;
@@ -39,16 +41,27 @@ class DatabaseHelper {
     b.execute(_sqlSyncQueue);
     b.execute(_sqlSyncMetadata);
     b.execute(_sqlBarcodeCache);
+    b.execute(_sqlShoppingListItems);
+    b.execute(RecurringExpensesSchema.table);
     b.execute(_sqlMigrations);
     _indexes(b);
     _seedCategories(b);
     await b.commit(noResult: true);
+    // M-2 (AC 4.1 — cài mới): bảng recurring_expenses được tạo ở batch trên,
+    // còn row version 6 vẫn được ghi vào schema_migrations đúng spec.
+    await RecurringExpensesSchema.record(db);
+    // M-3 (AC 7.1 — cài mới): cột items.store_name đã có sẵn trong _sqlItems
+    // (batch trên), row version 7 vẫn được ghi đúng spec.
+    await ItemsStoreNameSchema.record(db);
   }
 
   static Future<void> _onUpgrade(Database db, int old, int newV) async {
     if (old < 2) await _migrationV2(db);
     if (old < 3) await _migrationV3(db);
     if (old < 4) await _migrationV4(db);
+    if (old < 5) await _migrationV5(db);
+    if (old < 6) await _migrationV6(db);
+    if (old < 7) await _migrationV7(db);
   }
 
   // ─── Migration v2: sync tables ───────────────────────────────────────────
@@ -83,6 +96,36 @@ class DatabaseHelper {
     });
   }
 
+  // ─── Migration v5: shopping list items (F-#6, local-only) ────────────────
+  // CREATE TABLE IF NOT EXISTS nên an toàn với cả DB tạo mới lẫn DB cũ chưa
+  // từng có bảng này; KHÔNG đụng bảng có sẵn → dữ liệu user cũ giữ nguyên.
+  // `updated_at` bắt buộc để dùng LWW khi sync mở khoá về sau (spec F-#6).
+  static Future<void> _migrationV5(Database db) async {
+    await db.execute(_sqlShoppingListItems);
+    await db.execute(_idxShoppingUnchecked);
+    await db.execute(_idxShoppingWatched);
+    await db.insert('schema_migrations', {
+      'version': 5, 'name': 'add_shopping_list_items',
+      'applied_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  // ─── Migration v6: recurring expenses (M-2, local-only) ──────────────────
+  // Đi qua `RecurringExpensesSchema.apply` (file riêng để test được DDL):
+  // CREATE TABLE IF NOT EXISTS + index, KHÔNG đụng bảng có sẵn → dữ liệu
+  // user cũ ở items / shopping_list_items giữ nguyên (AC 4.1).
+  static Future<void> _migrationV6(Database db) async {
+    await RecurringExpensesSchema.apply(db);
+  }
+
+  // ─── Migration v7: items.store_name (M-3, additive) ──────────────────────
+  // ALTER TABLE ADD COLUMN — precedent `_migrationV3`; idempotent (PRAGMA
+  // table_info) + fail-safe (lỗi DDL → log + skip, không crash openDatabase).
+  // Dữ liệu user cũ nguyên vẹn, row cũ nhận NULL (AC 7.1).
+  static Future<void> _migrationV7(Database db) async {
+    await ItemsStoreNameSchema.apply(db);
+  }
+
   // ─── DDL ─────────────────────────────────────────────────────────────────
   static const _sqlCategories = '''
     CREATE TABLE IF NOT EXISTS categories (
@@ -107,6 +150,7 @@ class DatabaseHelper {
       latitude      REAL,
       longitude     REAL,
       sticker_data  TEXT,
+      store_name    TEXT,
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL,
       server_id     TEXT,
@@ -177,6 +221,25 @@ class DatabaseHelper {
       cached_at     INTEGER NOT NULL
     )''';
 
+  // F-#6: danh sách mua — LOCAL-ONLY (sync bị whitelist DTO chặn, AC 6.17).
+  // last_alert_price: giá P của lần giảm ĐÃ alert (dedup AC 6.15).
+  // has_unseen_alert: cờ badge trên entry Shopping List (AC 6.13).
+  static const _sqlShoppingListItems = '''
+    CREATE TABLE IF NOT EXISTS shopping_list_items (
+      id               TEXT    PRIMARY KEY,
+      name             TEXT    NOT NULL,
+      barcode          TEXT,
+      checked          INTEGER NOT NULL DEFAULT 0,
+      watched          INTEGER NOT NULL DEFAULT 0,
+      quantity         INTEGER,
+      expected_price   INTEGER,
+      category_id      TEXT,
+      last_alert_price INTEGER,
+      has_unseen_alert INTEGER NOT NULL DEFAULT 0,
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL
+    )''';
+
   static const _sqlMigrations = '''
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version     INTEGER PRIMARY KEY,
@@ -187,6 +250,8 @@ class DatabaseHelper {
   // ─── Indexes ─────────────────────────────────────────────────────────────
   static const _idxItemsUnsynced    = "CREATE INDEX IF NOT EXISTS idx_items_unsynced ON items(is_synced) WHERE is_synced = 0";
   static const _idxItemsSoftDelete  = "CREATE INDEX IF NOT EXISTS idx_items_deleted  ON items(is_deleted) WHERE is_deleted = 0";
+  static const _idxShoppingUnchecked = "CREATE INDEX IF NOT EXISTS idx_shopping_unchecked ON shopping_list_items(checked, created_at DESC)";
+  static const _idxShoppingWatched   = "CREATE INDEX IF NOT EXISTS idx_shopping_watched   ON shopping_list_items(watched) WHERE watched = 1";
 
   static void _indexes(Batch b) {
     b.execute("CREATE INDEX IF NOT EXISTS idx_items_created_at    ON items(created_at DESC)");
@@ -198,6 +263,9 @@ class DatabaseHelper {
     b.execute("CREATE INDEX IF NOT EXISTS idx_alerts_undismissed  ON budget_alerts(budget_id, is_dismissed) WHERE is_dismissed = 0");
     b.execute(_idxItemsUnsynced);
     b.execute(_idxItemsSoftDelete);
+    b.execute(_idxShoppingUnchecked);
+    b.execute(_idxShoppingWatched);
+    b.execute(RecurringExpensesSchema.index);
   }
 
   // ─── Seed ─────────────────────────────────────────────────────────────────

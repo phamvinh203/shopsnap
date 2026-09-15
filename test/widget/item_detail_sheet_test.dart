@@ -45,6 +45,7 @@ class _FakeItemsNotifier extends ItemsNotifier {
   String? updatedName;
   int? updatedPrice;
   String? updatedCategoryId;
+  String? updatedStoreName;
   Object? updateError;
   Object? deleteError;
 
@@ -59,11 +60,13 @@ class _FakeItemsNotifier extends ItemsNotifier {
     String? categoryId,
     String? note,
     String? barcode,
+    String? storeName,
   }) async {
     updateCalls++;
     updatedName = name;
     updatedPrice = price;
     updatedCategoryId = categoryId;
+    updatedStoreName = storeName;
     if (updateError != null) throw updateError!;
   }
 

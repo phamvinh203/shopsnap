@@ -10,10 +10,13 @@ import '../../screens/auth/register_screen.dart';
 import '../../screens/budget_settings/budget_settings_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/home/home_screen.dart';
+import '../../screens/notifications/notification_feed_screen.dart';
 import '../../screens/ocr/ocr_screen.dart';
 import '../../screens/profile/export_screen.dart';
 import '../../screens/profile/profile_screen.dart';
+import '../../screens/recurring/recurring_screen.dart';
 import '../../screens/scan/scan_screen.dart';
+import '../../screens/shopping_list/shopping_list_screen.dart';
 import '../../screens/summary/summary_screen.dart';
 import '../../screens/shell/main_shell.dart';
 
@@ -77,6 +80,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/profile', builder: (c, s) => const ProfileScreen()),
       // F-#11: entry từ section Export của /profile.
       GoRoute(path: '/export', builder: (c, s) => const ExportScreen()),
+      // M-2: Khoản định kỳ — entry từ section "Dữ liệu local" của /profile
+      // (spec Notes — [ASSUMPTION] vị trí entry point), KHÔNG thêm bottom-nav
+      // tab. Ngoài shell → có AppBar back riêng. Cũng là đích deep-link khi
+      // user bấm recurring reminder (AC 4.13, qua whitelist
+      // parseNotificationRoute — NotificationService.onNotificationTap).
+      GoRoute(path: '/recurring', builder: (c, s) => const RecurringScreen()),
+      // F-#6: Danh sách mua — entry từ app bar Home (không thêm bottom-nav
+      // tab). Ngoài shell → có AppBar back riêng. Offline hoàn toàn, auth gate
+      // mềm: chưa đăng nhập vẫn dùng được.
+      GoRoute(
+        path: '/shopping-list',
+        // AC 12.5 — deep-link từ price alert: `?item=<id>` để màn list
+        // scroll-to + highlight đúng món user vừa được thông báo.
+        builder: (c, s) => ShoppingListScreen(
+          highlightItemId: s.uri.queryParameters['item'],
+        ),
+      ),
+      // F-#12: Notification Feed — entry từ bell icon app bar Home. Ngoài
+      // shell → có AppBar back riêng. Cũng là đích deep-link khi user bấm
+      // notification hệ thống (AC 12.5, qua NotificationService.onNotificationTap).
+      GoRoute(
+        path: '/notifications',
+        builder: (c, s) => const NotificationFeedScreen(),
+      ),
     ],
   );
 });

@@ -1,7 +1,7 @@
 name: shopsnap
 description: Shopping Tracker — Offline-first với Cloud Sync
 publish_to: "none"
-version: 1.0.6+6
+version: 1.1.0+7
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -47,7 +47,10 @@ dependencies:
 
   # Notifications
   flutter_local_notifications: ^17.1.2
-  share_plus: ^12.0.2
+  # M-2 (AC 4.11): zonedSchedule của flutter_local_notifications yêu cầu
+  # package timezone (đã có transitive — giờ là dependency trực tiếp).
+  timezone: ^0.9.4
+  share_plus: 12.0.2
 
 dev_dependencies:
   flutter_test:

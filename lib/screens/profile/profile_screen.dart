@@ -8,6 +8,7 @@ import '../../core/utils/date_helper.dart';
 import '../../core/utils/logout_flow.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/export_provider.dart';
+import '../../providers/notification_preferences_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../widgets/ui/ui.dart';
@@ -48,9 +49,20 @@ class ProfileScreen extends ConsumerWidget {
 
           const _SectionHeader('Dữ liệu local'),
           const _LocalDataSection(),
+          const SizedBox(height: AppSpacing.sm),
+          // M-2: Khoản chi định kỳ — entry point theo spec Notes (nhóm quản
+          // lý dữ liệu của /profile, [ASSUMPTION]); offline hoàn toàn, auth
+          // gate mềm: chưa đăng nhập vẫn dùng được.
+          const _RecurringEntrySection(),
 
           const _SectionHeader('Giao diện'),
           const AppCard(child: ThemeModeSection()),
+
+          // F-#12 (AC 12.7): toggle notification — chỉ lưu local (BE chưa có
+          // endpoint preference); tắt → không local notification loại đó,
+          // feed server vẫn hiện record do BE tạo.
+          const _SectionHeader('Thông báo'),
+          const _NotificationPrefsSection(),
 
           const _SectionHeader('Xuất dữ liệu'),
           const _ExportSection(),
@@ -336,6 +348,77 @@ class _LocalStat extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ── 3.1 Khoản định kỳ (M-2 — entry point từ /profile) ────────────────────────
+
+class _RecurringEntrySection extends StatelessWidget {
+  const _RecurringEntrySection();
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+        child: ListTile(
+          key: const Key('profile_recurringEntry'),
+          contentPadding: EdgeInsets.zero,
+          leading:
+              Icon(Icons.event_repeat_rounded, color: context.cs.primary),
+          title: const Text('Khoản chi định kỳ'),
+          subtitle: Text(
+            'Khai báo & nhận nhắc trước ngày đến hạn (lưu trên máy này)',
+            style: context.text.bodySmall,
+          ),
+          trailing:
+              Icon(Icons.chevron_right, color: context.cs.onSurfaceVariant),
+          onTap: () => context.push('/recurring'),
+        ),
+      );
+}
+
+// ── 4.5 Thông báo (F-#12 AC 12.7) ───────────────────────────────────────────
+
+class _NotificationPrefsSection extends ConsumerWidget {
+  const _NotificationPrefsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(notificationPreferencesProvider).valueOrNull ??
+        NotificationPreferences.allEnabled;
+
+    return AppCard(
+      key: const Key('profile_notificationSection'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            key: const Key('profile_budgetAlertsToggle'),
+            contentPadding: EdgeInsets.zero,
+            value: prefs.budgetAlerts,
+            onChanged: (enabled) => ref
+                .read(notificationPreferencesProvider.notifier)
+                .setBudgetAlerts(enabled),
+            title: const Text('Budget alerts'),
+            subtitle: Text(
+              'Nhắc khi chi tiêu chạm ngưỡng ngân sách (lưu trên máy này)',
+              style: context.text.bodySmall,
+            ),
+          ),
+          SwitchListTile(
+            key: const Key('profile_priceAlertsToggle'),
+            contentPadding: EdgeInsets.zero,
+            value: prefs.priceAlerts,
+            onChanged: (enabled) => ref
+                .read(notificationPreferencesProvider.notifier)
+                .setPriceAlerts(enabled),
+            title: const Text('Price alerts'),
+            subtitle: Text(
+              'Báo khi món đang theo dõi có mức giá tốt (lưu trên máy này)',
+              style: context.text.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── 5. Export (F-#11) ────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import '../models/ai_assistant_model.dart';
 import '../models/item_model.dart';
 import '../models/summary_model.dart';
 import '../core/utils/date_helper.dart';
+import '../core/utils/merchant_insights.dart';
 import '../services/summary_api_service.dart';
 import 'auth_provider.dart';
 import 'database_provider.dart';
@@ -130,6 +131,25 @@ final summaryInsightsProvider =
   } catch (_) {
     return const [];
   }
+});
+
+/// M-3 (AC 7.8/7.11/7.14): phân tích chi tiêu theo nơi mua cho kỳ đang chọn —
+/// 100% TÍNH TỪ SQLITE LOCAL (không gọi API — AC 7.15 group-by server là
+/// [CONTRACT-PENDING]): đọc items của kỳ qua `findByRange` rồi để pure function
+/// `buildMerchantSummary` group-by nguyên văn store_name (AC 7.13) + so sánh
+/// giá cùng món. Lượt mua không có nơi mua tự bị pure function bỏ qua.
+final merchantSummaryProvider =
+    FutureProvider.family<MerchantSummary, SummaryParams>((ref, params) async {
+  final db  = await ref.watch(databaseProvider.future);
+  final dao = ItemDao(db);
+
+  final range = params.localRange;
+  final items = await dao.findByRange(range.$1, range.$2);
+  final purchases = [
+    for (final i in items)
+      MerchantPurchase(name: i.name, storeName: i.storeName, price: i.price),
+  ];
+  return buildMerchantSummary(purchases);
 });
 
 /// F-#2 (AC 2.1): tổng chi KỲ LIỀN TRƯỚC cùng độ dài — nguồn offline cho MoM

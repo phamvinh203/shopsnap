@@ -48,6 +48,7 @@ class _FakeItemsNotifier extends ItemsNotifier {
     String? categoryId,
     String? note,
     String? barcode,
+    String? storeName,
   }) async {
     updateCalls++;
   }

@@ -7,10 +7,15 @@ class PriceHistoryApiService {
   PriceHistoryApiService(this._client);
 
   /// Tra cứu lịch sử giá từ server (GET /items/price-history)
+  ///
+  /// [days] — F-#6 AC 6.9 (Notes finding #7): BE lọc `purchased_at >= now - days`
+  /// trước khi take limit. Optional theo BE (không gửi = default 30 của BE);
+  /// Shopping List truyền `days: 90` cho khối price intelligence.
   Future<PriceHistorySummary?> getPriceHistory({
     String? name,
     String? barcode,
     int limit = 30,
+    int? days,
   }) async {
     try {
       final data = await _client.get(
@@ -19,6 +24,7 @@ class PriceHistoryApiService {
         query: {
           if (name != null && name.isNotEmpty) 'name': name,
           if (barcode != null && barcode.isNotEmpty) 'barcode': barcode,
+          if (days != null) 'days': days.toString(),
           'limit': limit.toString(),
         },
       );

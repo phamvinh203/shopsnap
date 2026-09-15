@@ -47,6 +47,7 @@ class ItemDetailSheet extends ConsumerStatefulWidget {
 class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _priceCtrl;
+  late final TextEditingController _storeCtrl;
   late String? _categoryId;
   bool _saving = false;
   bool _deleting = false;
@@ -59,6 +60,8 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
     _priceCtrl = TextEditingController(
       text: widget.item.price > 0 ? '${widget.item.price}' : '',
     );
+    // M-3 (AC 7.6): prefill nơi mua hiện có; xoá trắng khi lưu → về NULL.
+    _storeCtrl = TextEditingController(text: widget.item.storeName ?? '');
     _categoryId = widget.item.categoryId.isEmpty ? null : widget.item.categoryId;
   }
 
@@ -66,6 +69,7 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
   void dispose() {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
+    _storeCtrl.dispose();
     super.dispose();
   }
 
@@ -96,7 +100,8 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
   bool get _hasChange =>
       _nameCtrl.text.trim() != widget.item.name ||
       CurrencyFormatter.parse(_priceCtrl.text) != widget.item.price ||
-      _categoryId != widget.item.categoryId;
+      _categoryId != widget.item.categoryId ||
+      _storeCtrl.text.trim() != (widget.item.storeName ?? '');
 
   /// F-#1 Deal Badge card — tra cứu price history (offline-first, user-scoped)
   /// theo tên/barcode của item. Không có history → không card (AC 1.6);
@@ -147,6 +152,11 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
             name: name != widget.item.name ? name : null,
             price: price != widget.item.price ? price : null,
             categoryId: _categoryId != widget.item.categoryId ? _categoryId : null,
+            // M-3 (AC 7.6): đổi nơi mua mới gửi; xoá trắng → '' (updateLocal
+            // set cột về NULL, PATCH gửi store_name='' — không giữ giá trị cũ).
+            storeName: _storeCtrl.text.trim() != (widget.item.storeName ?? '')
+                ? _storeCtrl.text.trim()
+                : null,
           );
       if (!mounted) return;
       Navigator.of(context).pop(); // Home tự cập nhật theo itemsProvider
@@ -233,6 +243,15 @@ class _ItemDetailSheetState extends ConsumerState<ItemDetailSheet> {
           // Chặn ký tự không phải số ngay từ input (paste "1abc0" → "10"),
           // không dựa vào CurrencyFormatter.parse lọc im lặng (bug QA M2).
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        // M-3 (AC 7.6): sửa nơi mua — prefill giá trị hiện có, xoá trắng được.
+        AppTextField(
+          key: const Key('itemDetailSheet_storeField'),
+          controller: _storeCtrl,
+          label: 'Nơi mua (tuỳ chọn)',
+          hint: 'VD: CoopMart, Bách Hóa Xanh...',
+          prefixIcon: Icons.storefront_outlined,
         ),
         const SizedBox(height: AppSpacing.md),
         DropdownButtonFormField<String>(

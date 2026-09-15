@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/app_dimens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/snap_colors.dart';
 import '../../core/utils/api_error_messages.dart';
+import '../../core/utils/budget_alert.dart';
 import '../../core/utils/budget_insights.dart';
 import '../../core/utils/date_helper.dart';
 import '../../models/item_model.dart';
 import '../../providers/items_provider.dart';
 import '../../providers/budget_provider.dart';
 import '../../providers/categories_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../providers/all_budgets_provider.dart';
 import '../../services/sync_engine.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/update_dialog.dart';
+import '../shopping_list/widgets/shopping_list_entry_button.dart';
 import 'widgets/budget_progress_card.dart';
 import 'widgets/category_chips_row.dart';
 import 'widgets/item_card.dart';
@@ -29,15 +33,32 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
   String? _filterCategory;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAppUpdateSilently();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// F-#12 (AC 12.8 Notes — poll khi app vào foreground): quay lại app → làm
+  /// mới badge số notification chưa đọc.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(unreadNotificationsCountProvider);
+    }
   }
 
   Future<void> _checkAppUpdateSilently() async {
@@ -100,6 +121,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final syncState     = ref.watch(syncProvider);
     final updateState   = ref.watch(appUpdateProvider);
     final updateInfo    = updateState.info.valueOrNull;
+    // F-#12 (AC 12.8): badge bell = số notification chưa đọc; lỗi/offline → 0.
+    final unreadNotifications =
+        ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
+    // F-#12 (AC 12.13): notification bị chặn quyền → banner hướng dẫn bật.
+    final permissionDenied = ref.watch(notificationPermissionDeniedProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -194,6 +220,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                             onPressed: _checkAppUpdateManually,
                           ),
+                          // F-#12 (AC 12.8/12.9): bell → Notification Feed,
+                          // badge = số chưa đọc, biến mất khi = 0.
+                          IconButton(
+                            key: const Key('homeScreen_notificationBell'),
+                            tooltip: unreadNotifications > 0
+                                ? 'Thông báo · $unreadNotifications chưa đọc'
+                                : 'Thông báo',
+                            icon: Badge(
+                              key: const Key('homeScreen_notificationBadge'),
+                              isLabelVisible: unreadNotifications > 0,
+                              backgroundColor: context.snap.danger,
+                              label: Text(
+                                // AC 12.8 — quá 99 thông báo: hiển thị "99+".
+                                notificationBadgeLabel(unreadNotifications),
+                              ),
+                              child: Icon(
+                                Icons.notifications_outlined,
+                                color: unreadNotifications > 0
+                                    ? context.cs.primary
+                                    : context.cs.onSurfaceVariant,
+                              ),
+                            ),
+                            onPressed: () => context.push('/notifications'),
+                          ),
+                          // F-#6: Danh sách mua + badge alert giá chưa xem.
+                          const ShoppingListEntryButton(),
                           // F-#10 (AC 10.1): avatar/app bar → mở /profile.
                           IconButton(
                             key: const Key('homeScreen_profileButton'),
@@ -282,6 +334,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 color: context.cs.onPrimary,
                               ),
                             ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // ── F-#12 (AC 12.13): notification bị chặn quyền → banner hướng
+              // dẫn bật trong system settings (thay thế alert không gửi được).
+              if (permissionDenied)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+                    child: AppCard(
+                      key: const Key('homeNotificationPermissionBanner'),
+                      tint: context.snap.warning.withOpacity(0.10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.notifications_off_outlined,
+                              size: 20, color: context.snap.warning),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Text(
+                              'Thông báo đang tắt — bật trong Cài đặt để không bỏ lỡ cảnh báo ngân sách.',
+                              style: context.text.bodySmall,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          TextButton(
+                            key: const Key('homeNotificationPermissionSettings'),
+                            onPressed: _openSystemNotificationSettings,
+                            child: const Text('Mở cài đặt'),
+                          ),
+                          IconButton(
+                            key: const Key('homeNotificationPermissionDismiss'),
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => ref
+                                .read(notificationPermissionDeniedProvider.notifier)
+                                .state = false,
                           ),
                         ],
                       ),
@@ -443,6 +536,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<ItemModel> _applyFilter(List<ItemModel> items) {
     if (_filterCategory == null) return items;
     return items.where((i) => i.categoryId == _filterCategory).toList();
+  }
+
+  /// AC 12.13 — mở cài đặt hệ thống để cấp quyền POST_NOTIFICATIONS.
+  /// permission_handler là method channel: môi trường test/thiết bị lạ có thể
+  /// ném MissingPluginException → nuốt để banner vẫn dismiss được.
+  Future<void> _openSystemNotificationSettings() async {
+    try {
+      await openAppSettings();
+    } catch (_) {}
   }
 
   /// Xoá item — lỗi từ server (404/500, không phải mạng) → snackbar tiếng Việt;

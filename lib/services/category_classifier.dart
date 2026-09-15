@@ -1,3 +1,5 @@
+import '../core/utils/price_watch.dart' show normalizeMatchKey;
+
 abstract class CategoryClassifier {
   static const _rules = <String, String>{
     'cà phê': 'cat_food',   'coffee': 'cat_food',    'cafe': 'cat_food',
@@ -35,4 +37,44 @@ abstract class CategoryClassifier {
     }
     return 'cat_other';
   }
+
+  // ── F-#5 P1 (AC 5.2): lớp TỰ HỌC từ lựa chọn của user ──────────────────────
+  // Map "tên normalize → category" học từ (1) seed lịch sử item local khi mở
+  // màn confirm và (2) category user vừa chủ động chọn cho dòng OCR. Chỉ sống
+  // trong phiên chạy (in-memory) — phiên sau được seed lại từ SQLite nên hành
+  // vi "lần sau OCR ra dòng cùng tên X thì chọn lại category đã chọn" vẫn đúng.
+  static final Map<String, String> _learned = <String, String>{};
+
+  /// Học: user chọn [categoryId] cho dòng tên [itemName].
+  static void learn(String itemName, String categoryId) {
+    final key = normalizeMatchKey(itemName);
+    if (key.isEmpty || categoryId.isEmpty) return;
+    _learned[key] = categoryId;
+  }
+
+  /// Category đã học cho đúng tên này (khớp chính xác sau normalize), hoặc null.
+  static String? learnedCategory(String itemName) {
+    final key = normalizeMatchKey(itemName);
+    if (key.isEmpty) return null;
+    return _learned[key];
+  }
+
+  /// Gợi ý category cho một dòng: TỰ HỌC (ưu tiên — user/history đã quyết)
+  /// → luật tĩnh [classify] → 'cat_other'.
+  static String suggest(String itemName) =>
+      learnedCategory(itemName) ?? classify(itemName);
+
+  /// Seed từ lịch sử item local (sắp MỚI → CŨ): item mới nhất cùng tên quyết
+  /// định category (không ghi đè key đã học trước đó).
+  static void seedFromHistory(Iterable<(String name, String categoryId)> entries) {
+    for (final (name, categoryId) in entries) {
+      final key = normalizeMatchKey(name);
+      if (key.isEmpty || categoryId.isEmpty) continue;
+      if (_learned.containsKey(key)) continue;
+      _learned[key] = categoryId;
+    }
+  }
+
+  /// Dùng cho test — xoá sạch lớp tự học.
+  static void resetLearned() => _learned.clear();
 }

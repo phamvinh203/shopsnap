@@ -24,6 +24,7 @@ import '../scan/widgets/barcode_contribute_sheet.dart';
 import 'widgets/image_picker_section.dart';
 import 'widgets/category_selector.dart';
 import 'widgets/price_comparison_hint.dart';
+import 'widgets/store_field.dart';
 
 class AddItemScreen extends ConsumerStatefulWidget {
   const AddItemScreen({super.key});
@@ -36,6 +37,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
   final _nameCtrl    = TextEditingController();
   final _priceCtrl   = TextEditingController();
   final _noteCtrl    = TextEditingController();
+  final _storeCtrl   = TextEditingController(); // M-3: "Nơi mua" (tuỳ chọn)
 
   String? _imagePath;
   String  _selectedCategory = 'cat_other';
@@ -62,6 +64,7 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     _noteCtrl.dispose();
+    _storeCtrl.dispose();
     super.dispose();
   }
 
@@ -194,6 +197,8 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
         categoryId: fallbackOther ? null : _selectedCategory,
         imagePath:  _imagePath,
         note:       _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        // M-3 (AC 7.3/7.5): trim; rỗng → null (item KHÔNG có nơi mua).
+        storeName:  sanitizeStoreName(_storeCtrl.text),
       ), force: force);
 
       if (mounted) {
@@ -433,6 +438,15 @@ class _AddItemScreenState extends ConsumerState<AddItemScreen> {
                 message: 'Không tải được danh mục.',
                 onRetry: () => ref.invalidate(categoriesProvider),
               ),
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            // ── M-3: Nơi mua (tuỳ chọn) + gợi ý theo tần suất local ─────
+            StoreFieldSuggestions(
+              controller: _storeCtrl,
+              suggestions: ref.watch(storeSuggestionsProvider).valueOrNull ??
+                  const <String>[],
             ),
 
             const SizedBox(height: AppSpacing.xl),

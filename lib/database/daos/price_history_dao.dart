@@ -1,4 +1,6 @@
 import 'package:sqflite/sqflite.dart';
+import '../../core/constants/app_constants.dart';
+import '../../core/utils/receipt_auto_match.dart';
 import '../../models/price_history_model.dart';
 
 class PriceHistoryDao {
@@ -88,6 +90,67 @@ class PriceHistoryDao {
       totalRecords: rows.length,
       points: points,
     );
+  }
+
+  /// F-#6: records giá khớp CHÍNH XÁC một sản phẩm theo match key của spec —
+  /// barcode khớp (nếu có) HOẶC `item_name` = tên đã normalize (exact equality,
+  /// KHÔNG LIKE fuzzy như [getPriceHistory] — 'bánh' không được khớp 'bánh mì').
+  ///
+  /// Trả points xếp GIẢM dần theo thời gian (mới nhất đầu) — caller tự loại
+  /// record vừa thêm khi cần baseline (excludeLatest).
+  Future<List<PriceHistoryPoint>> getMatchRecords({
+    required String name,
+    String? barcode,
+    int limit = 200,
+  }) async {
+    final nameKey = name.trim().toLowerCase();
+    final bc = barcode?.trim();
+    if (nameKey.isEmpty && (bc == null || bc.isEmpty)) return [];
+
+    final rows = await db.query(
+      'price_history',
+      where: (bc != null && bc.isNotEmpty)
+          ? '(barcode = ? OR item_name = ?)'
+          : 'item_name = ?',
+      whereArgs:
+          (bc != null && bc.isNotEmpty) ? [bc, nameKey] : [nameKey],
+      orderBy: 'purchased_at DESC',
+      limit: limit,
+    );
+
+    return rows
+        .map((r) => PriceHistoryPoint(
+              id: r['id'] as String,
+              price: (r['price'] as num).toInt(),
+              purchasedAt:
+                  DateTime.fromMillisecondsSinceEpoch(r['purchased_at'] as int),
+            ))
+        .toList();
+  }
+
+  /// M-1 auto-match: TOÀN BỘ record sổ giá trong [days] ngày gần nhất
+  /// (MỚI → CŨ) — dữ liệu đối chiếu cho màn confirm OCR. Thuần SQLite,
+  /// không gọi API → auto-match chạy cả offline (AC 5.25).
+  Future<List<PriceHistoryMatchRecord>> findRecentRecords({
+    int days = AppConstants.priceHistoryDays,
+  }) async {
+    final since =
+        DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+    final rows = await db.query(
+      'price_history',
+      where: 'purchased_at >= ?',
+      whereArgs: [since],
+      orderBy: 'purchased_at DESC',
+    );
+    return rows
+        .map((r) => PriceHistoryMatchRecord(
+              name: r['item_name'] as String,
+              price: (r['price'] as num).toInt(),
+              barcode: r['barcode'] as String?,
+              purchasedAt:
+                  DateTime.fromMillisecondsSinceEpoch(r['purchased_at'] as int),
+            ))
+        .toList();
   }
 
   /// Lấy danh sách các mặt hàng xuất hiện nhiều lần nhất trong lịch sử mua sắm

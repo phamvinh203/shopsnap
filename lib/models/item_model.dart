@@ -12,6 +12,7 @@ class ItemModel {
   final double? latitude;
   final double? longitude;
   final String? stickerData;
+  final String? storeName;     // M-3: nơi mua — persisted từ migration v7
   final int     createdAt;
   final int     updatedAt;
   final String? serverId;
@@ -21,10 +22,11 @@ class ItemModel {
   // ── Field chỉ có ở backend API — sqflite không có cột tương ứng nên
   //    toMap()/fromMap bỏ qua (schema giữ nguyên). Sau khi đọc lại từ DAO
   //    các field này sẽ null — consumer hiện tại không dùng đến. ────────────
+  //    Ngoại lệ: `storeName` được persist từ migration v7 (M-3) — xem khối
+  //    field bên trên. ──────────────────────────────────────────────────────
   final int?    quantity;      // backend default 1
   final String? unit;          // 'hộp', 'cái', ...
   final int?    totalPrice;    // server-computed: price * quantity (BR-01)
-  final String? storeName;
   final String? source;        // manual | ocr | barcode | import
   final int?    purchaseDate;  // ISO 8601 → millisecond int
   final String? imageUrl;      // URL server — KHÔNG nhét vào imagePath (Image.file sẽ lỗi)
@@ -45,6 +47,7 @@ class ItemModel {
     this.latitude,
     this.longitude,
     this.stickerData,
+    this.storeName,
     required this.createdAt,
     required this.updatedAt,
     this.serverId,
@@ -53,7 +56,6 @@ class ItemModel {
     this.quantity,
     this.unit,
     this.totalPrice,
-    this.storeName,
     this.source,
     this.purchaseDate,
     this.imageUrl,
@@ -76,6 +78,7 @@ class ItemModel {
     latitude:      m['latitude']   as double?,
     longitude:     m['longitude']  as double?,
     stickerData:   m['sticker_data'] as String?,
+    storeName:     m['store_name'] as String?,
     createdAt:     m['created_at'] as int,
     updatedAt:     m['updated_at'] as int,
     serverId:      m['server_id']  as String?,
@@ -135,7 +138,7 @@ class ItemModel {
     return 0;
   }
 
-  /// Row sqflite — đúng bộ cột hiện có của bảng `items`, không thêm cột mới.
+  /// Row sqflite — đúng bộ cột của bảng `items` (từ v7 có thêm store_name).
   Map<String, dynamic> toMap() => {
     'id':           id,
     'name':         name,
@@ -147,6 +150,7 @@ class ItemModel {
     'latitude':     latitude,
     'longitude':    longitude,
     'sticker_data': stickerData,
+    'store_name':   storeName,
     'created_at':   createdAt,
     'updated_at':   updatedAt,
     'server_id':    serverId,
@@ -167,6 +171,7 @@ class ItemModel {
     double? latitude,
     double? longitude,
     String? stickerData,
+    String? storeName,
     int? createdAt,
     int? updatedAt,
     String? serverId,
@@ -186,6 +191,7 @@ class ItemModel {
     latitude:      latitude      ?? this.latitude,
     longitude:     longitude     ?? this.longitude,
     stickerData:   stickerData   ?? this.stickerData,
+    storeName:     storeName     ?? this.storeName,
     createdAt:     createdAt     ?? this.createdAt,
     updatedAt:     updatedAt     ?? this.updatedAt,
     serverId:      serverId      ?? this.serverId,

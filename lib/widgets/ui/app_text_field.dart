@@ -15,6 +15,9 @@ class AppTextField extends StatelessWidget {
 
   /// Widget góc phải (vd nút hiện/ẩn mật khẩu).
   final Widget? suffix;
+
+  /// FocusNode ngoài (vd màn list cần focus lại ô nhập từ CTA empty state).
+  final FocusNode? focusNode;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
   final bool obscure;
@@ -39,6 +42,7 @@ class AppTextField extends StatelessWidget {
     this.label,
     this.prefixIcon,
     this.suffix,
+    this.focusNode,
     this.validator,
     this.keyboardType,
     this.obscure = false,
@@ -55,6 +59,7 @@ class AppTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       decoration: InputDecoration(
         hintText: hint,
         labelText: label,
